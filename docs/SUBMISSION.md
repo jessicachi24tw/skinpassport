@@ -8,9 +8,9 @@ Travel quietly damages skin: dry airplane cabins, freezing winter air, or a sudd
 
 **What we built.** A mobile web app with three steps:
 
-1. **Scan** — a selfie is analyzed by the **YouCam AI Skin Analysis API** (moisture, oiliness, redness, dark spots, acne, pores, texture, radiance).
-2. **Plan the trip** — type it naturally ("ski trip to Hokkaido next week for 4 days") or fill in a form. We fetch the destination forecast for the exact trip dates: temperature, humidity, UV index and air quality.
-3. **Get the plan** — a rule engine fuses skin scores with climate stress factors and gives every product category a **Necessity Score (0–100)**. The result is a pre-trip routine for the days before departure, an **Essential kit** (must-pack only) and a **Complete kit**, each with Buy now links and an estimated cart total. Claude writes a short, friendly explanation of *why*.
+1. **Scan** — a selfie taken in the in-app camera (face guide, low-light warning) is analyzed by the **YouCam AI Skin Analysis API** (moisture, oiliness, redness, dark spots, acne, pores, texture, radiance).
+2. **Plan the trip** — pick *From* and *To* (country first, then city, with autocomplete) and watch the route animate on a world map, then dates, transport (plane, train, car…) and activity tags that flow into free-form notes. We fetch the destination forecast for the exact trip dates — temperature, humidity, UV index, air quality — **and the current climate at home**, so the plan reacts to the change (e.g. "25°C colder and 38 points drier than Taipei").
+3. **Get the plan** — a rule engine fuses skin scores with climate stress factors and gives every product category a **Necessity Score (0–100)**. The result is a pre-trip routine for the days before departure, an **Essential kit** (must-pack only) and a **Complete kit**, each linking to a product page (why it's in *your* plan, key ingredients, how to use, alternatives) and a bag with an estimated total. Claude writes a short, friendly explanation of *why*.
 
 **How it works.** Next.js frontend and Next.js API routes as the backend, so the YouCam, weather and LLM keys never reach the browser. The backend handles YouCam's file upload → task → polling flow. The Necessity Score is deterministic and explainable: for example, UV ≥ 8 raises sunscreen to SPF 50+ / PA++++, snow and water multiply effective UV, low moisture + dry cold air pushes ceramide barrier cream to must-pack, while hot humid weather swaps it for a gel moisturizer. The LLM explains the result but never decides it.
 

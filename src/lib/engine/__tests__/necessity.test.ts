@@ -1,14 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { climateFactors, computeNeeds, sunscreenSpec, tierFor } from "../necessity";
+import { climateFactors, climateShift, computeNeeds, describeShift, sunscreenSpec, tierFor } from "../necessity";
 import { buildKits } from "../kits";
 import { catalogProvider } from "../../shop/provider";
-import { DEMO_SKIN, getScenario } from "../scenarios";
+import { DEMO_ORIGIN_CLIMATE, DEMO_SKIN, getScenario } from "../scenarios";
+import type { Transport } from "../../types";
 
-const run = async (id: string) => {
+const run = async (id: string, transport: Transport[] = ["plane"]) => {
   const s = getScenario(id)!;
-  const needs = computeNeeds(DEMO_SKIN.scores, s.climate, { activity: s.activity, flight: true, days: s.days });
-  const f = climateFactors(s.climate, s.activity);
-  const kits = await buildKits(needs, catalogProvider, { sensitive: true, effectiveUv: f.effectiveUv, activity: s.activity });
+  const trip = { activities: s.activities, transport, days: s.days };
+  const needs = computeNeeds(DEMO_SKIN.scores, s.climate, trip, DEMO_ORIGIN_CLIMATE);
+  const f = climateFactors(s.climate, s.activities);
+  const kits = await buildKits(needs, catalogProvider, { sensitive: true, effectiveUv: f.effectiveUv, activities: s.activities });
   const byId = Object.fromEntries(needs.map((n) => [n.id, n]));
   const essential = kits[0].items.map((r) => r.need.id);
   const sunscreen = kits[1].items.find((r) => r.need.id === "sunscreen")?.product;
@@ -24,7 +26,7 @@ describe("necessity engine", () => {
   });
 
   it("asks for SPF 50+ water-resistant under strong beach sun", () => {
-    const spec = sunscreenSpec(12, "beach");
+    const spec = sunscreenSpec(12, ["beach"]);
     expect(spec.minSpf).toBe(50);
     expect(spec.waterResistant).toBe(true);
   });
@@ -51,6 +53,24 @@ describe("necessity engine", () => {
     const r = await run("hokkaido-ski");
     expect(r.essential).toContain("sunscreen");
     expect(r.essential).toContain("lip_care");
+  });
+
+  it("compares the destination with home", () => {
+    const shift = climateShift(DEMO_ORIGIN_CLIMATE, getScenario("nyc-winter")!.climate)!;
+    expect(shift.tempDeltaC).toBeLessThan(-20);
+    expect(describeShift(shift)).toMatch(/colder.*drier than Taipei/);
+  });
+
+  it("a flight raises the face mist score more than a train", async () => {
+    const plane = await run("nyc-winter", ["plane"]);
+    const train = await run("nyc-winter", ["train"]);
+    expect(plane.byId.face_mist.score).toBeGreaterThan(train.byId.face_mist.score);
+  });
+
+  it("multi-select activities combine (ski + pool)", () => {
+    const s = getScenario("hokkaido-ski")!;
+    const needs = computeNeeds(DEMO_SKIN.scores, s.climate, { activities: ["ski", "pool"], transport: [], days: 4 });
+    expect(needs.find((n) => n.id === "gentle_cleanser")!.reasons.join(" ")).toMatch(/chlorine/);
   });
 
   it("never lists the same product twice in a kit", async () => {

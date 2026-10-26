@@ -20,17 +20,46 @@ export interface SkinProfile {
   scores: SkinScores;
 }
 
-export type Activity = "city" | "beach" | "ski" | "outdoor" | "business";
-
-export interface TripInput {
-  destination: string;
-  startDate: string; // YYYY-MM-DD
-  days: number;
-  activity: Activity;
-  flight: boolean;
+/** A geocoded place (city) picked from autocomplete. */
+export interface Place {
+  id: string;
+  name: string;
+  admin1?: string;
+  country: string;
+  countryCode: string;
+  lat: number;
+  lon: number;
 }
 
-/** Climate summary for the trip window. */
+export interface Country {
+  code: string; // ISO 3166-1 alpha-2
+  name: string;
+}
+
+/** Activity tags (multi-select). */
+export type Activity = "city" | "beach" | "pool" | "ski" | "hiking" | "festival" | "business" | "nightlife";
+
+/** Ways of getting there (multi-select). */
+export type Transport = "plane" | "train" | "car" | "bus" | "subway" | "ship";
+
+export interface TripInput {
+  origin: Place | null;
+  destination: Place | null;
+  startDate: string; // YYYY-MM-DD
+  days: number;
+  transport: Transport[];
+  activities: Activity[];
+  notes: string;
+}
+
+/** What the engine needs from a trip. */
+export interface TripContext {
+  activities: Activity[];
+  transport: Transport[];
+  days: number;
+}
+
+/** Climate summary for a time window at one place. */
 export interface Climate {
   locationName: string;
   source: "open-meteo" | "openweather" | "demo";
@@ -65,6 +94,8 @@ export interface Need {
   spec?: string; // e.g. "SPF 50+, PA++++, water-resistant"
 }
 
+export type Texture = "rich" | "light" | "gel" | "spray" | "balm";
+
 export interface Product {
   id: string;
   brand: string;
@@ -74,7 +105,11 @@ export interface Product {
   spf?: number;
   waterResistant?: boolean;
   sensitiveFriendly?: boolean;
-  texture?: "rich" | "light" | "gel" | "spray" | "balm";
+  texture?: Texture;
+  tagline: string;
+  description: string;
+  keyIngredients: string[];
+  howToUse: string;
   url: string;
 }
 
@@ -90,11 +125,20 @@ export interface Kit {
   subtotalUsd: number;
 }
 
+/** How the destination differs from home. */
+export interface ClimateShift {
+  fromName: string;
+  tempDeltaC: number; // destination avg − origin avg
+  humidityDelta: number; // destination − origin (percentage points)
+  uvDelta: number;
+}
+
 export interface PlanResult {
   needs: Need[];
   kits: Kit[];
   preTrip: string[];
   duringTrip: string[];
+  shift: ClimateShift | null;
   coachNote: string;
   coachSource: "llm" | "template";
 }

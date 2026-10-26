@@ -9,7 +9,7 @@ import { CATALOG } from "./catalog";
 export interface PickContext {
   sensitive: boolean;
   effectiveUv: number;
-  activity: Parameters<typeof sunscreenSpec>[1];
+  activities: Parameters<typeof sunscreenSpec>[1];
 }
 
 export interface ShopProvider {
@@ -22,7 +22,7 @@ export function fitScore(p: Product, need: Need, ctx: PickContext): number {
   if (!p.needs.includes(need.id)) return -1;
   let s = 10;
   if (need.id === "sunscreen") {
-    const spec = sunscreenSpec(ctx.effectiveUv, ctx.activity);
+    const spec = sunscreenSpec(ctx.effectiveUv, ctx.activities);
     if ((p.spf ?? 0) < spec.minSpf) return -1;
     if (spec.waterResistant) s += p.waterResistant ? 6 : -4;
     const extra = (p.spf ?? 0) - spec.minSpf;

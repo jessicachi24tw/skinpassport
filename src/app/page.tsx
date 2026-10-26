@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Bag from "@/components/Bag";
 import Results from "@/components/Results";
 import SkinStep from "@/components/SkinStep";
 import TripStep, { localToday, useToday } from "@/components/TripStep";
 import { ErrorText } from "@/components/ui";
-import { getScenario } from "@/lib/engine/scenarios";
-import type { Climate, PlanResult, SkinProfile, TripInput } from "@/lib/types";
+import { DEMO_ORIGIN, DEMO_ORIGIN_CLIMATE, getScenario } from "@/lib/engine/scenarios";
+import { setApp, useApp } from "@/lib/store";
+import type { Climate, Place, PlanResult, SkinProfile, TripInput } from "@/lib/types";
 
 const addDays = (from: string, n: number) => {
   const d = new Date(`${from}T12:00:00`);
@@ -23,22 +25,30 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
   return data as T;
 }
 
+const coords = (p: Place) => ({ name: p.name, lat: p.lat, lon: p.lon });
+
+/** Current climate at home; null if the forecast service is unreachable. */
+async function homeClimate(origin: Place): Promise<Climate | null> {
+  try {
+    return (await postJson<{ climate: Climate }>("/api/weather", { place: coords(origin), now: true })).climate;
+  } catch {
+    return null;
+  }
+}
+
 type Health = { youcam: string; weather: string; llm: string; shop: string };
 
 export default function Home() {
-  const [skin, setSkin] = useState<SkinProfile | null>(null);
+  const app = useApp();
   const today = useToday();
-  const [tripState, setTrip] = useState<TripInput>({ destination: "", startDate: "", days: 4, activity: "city", flight: true });
-  const [climate, setClimate] = useState<Climate | null>(null);
-  const [plan, setPlan] = useState<PlanResult | null>(null);
-  const [scenario, setScenario] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [health, setHealth] = useState<Health | null>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
 
   // Default the trip to one week from today until the user picks a date.
-  const trip = tripState.startDate || !today ? tripState : { ...tripState, startDate: addDays(today, 7) };
+  const trip: TripInput = app.trip.startDate || !today ? app.trip : { ...app.trip, startDate: addDays(today, 7) };
+  const setTrip = (patch: Partial<TripInput>) => setApp((s) => ({ trip: { ...s.trip, startDate: s.trip.startDate || trip.startDate, ...patch }, scenarioId: null }));
 
   useEffect(() => {
     fetch("/api/health")
@@ -47,12 +57,17 @@ export default function Home() {
       .catch(() => setHealth(null));
   }, []);
 
-  async function makePlan(c: Climate, t: TripInput) {
-    if (!skin) return;
-    const p = await postJson<PlanResult>("/api/plan", { skin: skin.scores, climate: c, trip: t, daysUntilTrip: daysUntil(t.startDate) });
-    setClimate(c);
-    setPlan(p);
-    setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  async function makePlan(climate: Climate, origin: Climate | null, t: TripInput) {
+    if (!app.skin) return;
+    const plan = await postJson<PlanResult>("/api/plan", {
+      skin: app.skin.scores,
+      climate,
+      origin,
+      trip: { activities: t.activities, transport: t.transport, days: t.days, notes: t.notes },
+      daysUntilTrip: daysUntil(t.startDate),
+    });
+    setApp({ climate, originClimate: origin, plan });
+    setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
   }
 
   async function run(fn: () => Promise<void>) {
@@ -69,29 +84,39 @@ export default function Home() {
 
   const planLive = () =>
     run(async () => {
-      setScenario(null);
-      const { climate: c } = await postJson<{ climate: Climate }>("/api/weather", { destination: trip.destination, startDate: trip.startDate, days: trip.days });
-      await makePlan(c, trip);
+      const dest = trip.destination!;
+      const [destRes, origin] = await Promise.all([
+        postJson<{ climate: Climate }>("/api/weather", { place: coords(dest), startDate: trip.startDate, days: trip.days }),
+        homeClimate(trip.origin!),
+      ]);
+      setApp({ scenarioId: null, trip });
+      await makePlan(destRes.climate, origin, trip);
     });
 
   const planScenario = (id: string) =>
     run(async () => {
       const s = getScenario(id)!;
-      const t: TripInput = { ...trip, destination: s.destination, activity: s.activity, days: s.days, flight: true };
-      setTrip(t);
-      setScenario(id);
-      const { climate: c } = await postJson<{ climate: Climate }>("/api/weather", { scenarioId: id });
-      await makePlan(c, t);
+      const originPlace = trip.origin ?? DEMO_ORIGIN;
+      const t: TripInput = {
+        ...trip,
+        origin: originPlace,
+        destination: s.place,
+        days: s.days,
+        activities: s.activities,
+        notes: trip.notes,
+        transport: trip.transport.length ? trip.transport : ["plane"],
+      };
+      setApp({ trip: t, scenarioId: id });
+      const { climate } = await postJson<{ climate: Climate }>("/api/weather", { scenarioId: id });
+      const origin = originPlace.id === DEMO_ORIGIN.id ? DEMO_ORIGIN_CLIMATE : await homeClimate(originPlace);
+      await makePlan(climate, origin, t);
     });
 
   // A new scan invalidates the old plan.
-  const onSkin = (s: SkinProfile) => {
-    setSkin(s);
-    setPlan(null);
-  };
+  const onSkin = (skin: SkinProfile) => setApp({ skin, plan: null });
 
   return (
-    <main className="mx-auto max-w-md px-4 pb-16 pt-6">
+    <main className="mx-auto max-w-md px-4 pb-28 pt-6">
       <header className="mb-5 flex items-end justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-coral">Geo-adaptive skincare coach</p>
@@ -108,15 +133,16 @@ export default function Home() {
       )}
 
       <div className="space-y-4">
-        <SkinStep skin={skin} onSkin={onSkin} />
-        <TripStep trip={trip} setTrip={setTrip} disabled={!skin} busy={busy} onPlan={planLive} onScenario={planScenario} activeScenario={scenario} />
+        <SkinStep skin={app.skin} onSkin={onSkin} />
+        <TripStep trip={trip} setTrip={setTrip} disabled={!app.skin} busy={busy} onPlan={planLive} onScenario={planScenario} activeScenario={app.scenarioId} />
         <ErrorText>{error}</ErrorText>
-        <div ref={resultsRef} className="scroll-mt-4">
-          {plan && climate && <Results plan={plan} climate={climate} />}
+        <div id="plan" ref={resultsRef} className="scroll-mt-4">
+          {app.plan && app.climate && <Results plan={app.plan} climate={app.climate} origin={app.originClimate} />}
         </div>
       </div>
 
       <footer className="mt-10 text-center text-[11px] text-ink-soft">Not medical advice. Skin analysis powered by YouCam AI Skin Analysis API.</footer>
+      <Bag />
     </main>
   );
 }

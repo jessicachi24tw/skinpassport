@@ -3,12 +3,17 @@ import "server-only";
 // Default provider: Open-Meteo (free, no key). If OPENWEATHER_API_KEY is set,
 // temperature/humidity/air quality come from OpenWeather instead.
 
-import type { Climate } from "../types";
+import type { Climate, Place } from "../types";
 
 const TIMEOUT = 12000;
 
 async function getJson(url: string) {
-  const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT), cache: "no-store" });
+  let res: Response;
+  try {
+    res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT), cache: "no-store" });
+  } catch {
+    throw new Error("Can't reach the weather service right now. Check your connection or try a demo destination.");
+  }
   if (!res.ok) throw new Error(`Weather service error (HTTP ${res.status})`);
   return res.json();
 }
@@ -33,18 +38,22 @@ export function pm25ToUsAqi(pm: number) {
   return 500;
 }
 
-export interface Place {
-  name: string;
-  lat: number;
-  lon: number;
-}
+type Coords = { name: string; lat: number; lon: number };
 
-export async function geocode(query: string): Promise<Place> {
-  const q = query.split(",")[0].trim();
-  const data = await getJson(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=1&language=en&format=json`);
-  const r = data?.results?.[0];
-  if (!r) throw new Error(`Could not find "${query}". Try a city name, e.g. "Sapporo".`);
-  return { name: [r.name, r.admin1, r.country].filter(Boolean).join(", "), lat: r.latitude, lon: r.longitude };
+/** Live city search (Open-Meteo geocoding), optionally limited to one country. */
+export async function searchPlaces(query: string, countryCode?: string): Promise<Place[]> {
+  const cc = countryCode ? `&countryCode=${encodeURIComponent(countryCode)}` : "";
+  const data = await getJson(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=10&language=en&format=json${cc}`);
+  type R = { id: number; name: string; admin1?: string; country?: string; country_code?: string; latitude: number; longitude: number };
+  return ((data?.results ?? []) as R[]).map((r) => ({
+    id: `om-${r.id}`,
+    name: r.name,
+    admin1: r.admin1,
+    country: r.country ?? "",
+    countryCode: (r.country_code ?? "").toUpperCase(),
+    lat: r.latitude,
+    lon: r.longitude,
+  }));
 }
 
 /** Inclusive list of YYYY-MM-DD dates. */
@@ -60,7 +69,7 @@ function dateRange(start: string, days: number) {
 
 export const FORECAST_HORIZON_DAYS = 16;
 
-async function openMeteo(place: Place, start: string, end: string): Promise<Omit<Climate, "locationName" | "source">> {
+async function openMeteo(place: Coords, start: string, end: string): Promise<Omit<Climate, "locationName" | "source">> {
   const base = `latitude=${place.lat}&longitude=${place.lon}&start_date=${start}&end_date=${end}&timezone=auto`;
   const wx = await getJson(
     `https://api.open-meteo.com/v1/forecast?${base}&daily=temperature_2m_max,temperature_2m_min,uv_index_max&hourly=relative_humidity_2m`,
@@ -91,7 +100,7 @@ async function openMeteo(place: Place, start: string, end: string): Promise<Omit
 }
 
 /** OpenWeather 5-day / 3-hour forecast + air pollution forecast. UV still comes from Open-Meteo. */
-async function openWeather(place: Place, dates: string[], key: string): Promise<Omit<Climate, "locationName" | "source">> {
+async function openWeather(place: Coords, dates: string[], key: string): Promise<Omit<Climate, "locationName" | "source">> {
   const q = `lat=${place.lat}&lon=${place.lon}&appid=${key}`;
   const fc = await getJson(`https://api.openweathermap.org/data/2.5/forecast?${q}&units=metric`);
   const inTrip = (dt: number) => dates.includes(new Date(dt * 1000).toISOString().slice(0, 10));
@@ -122,19 +131,32 @@ async function openWeather(place: Place, dates: string[], key: string): Promise<
   };
 }
 
-export async function getTripClimate(destination: string, startDate: string, days: number): Promise<Climate> {
-  const today = new Date(new Date().toISOString().slice(0, 10) + "T00:00:00Z");
+const isoToday = () => new Date().toISOString().slice(0, 10);
+
+/** Climate at `place` for the trip window (start date + days). */
+export async function getTripClimate(place: Coords, startDate: string, days: number): Promise<Climate> {
+  const today = new Date(isoToday() + "T00:00:00Z");
   const start = new Date(`${startDate}T00:00:00Z`);
   const offset = Math.round((start.getTime() - today.getTime()) / 86400000);
   if (Number.isNaN(offset)) throw new Error("Invalid start date.");
   if (offset < 0) throw new Error("The trip start date is in the past.");
-  const span = Math.max(1, Math.min(days, FORECAST_HORIZON_DAYS - offset));
   if (offset >= FORECAST_HORIZON_DAYS) {
-    throw new Error(`Forecasts only reach ${FORECAST_HORIZON_DAYS} days ahead. Pick closer dates or try a demo scenario.`);
+    throw new Error(`Forecasts only reach ${FORECAST_HORIZON_DAYS} days ahead. Pick closer dates or try a demo destination.`);
   }
+  const span = Math.max(1, Math.min(days, FORECAST_HORIZON_DAYS - offset));
   const dates = dateRange(startDate, span);
-  const place = await geocode(destination);
   const key = process.env.OPENWEATHER_API_KEY;
-  const data = key ? await openWeather(place, dates, key) : await openMeteo(place, dates[0], dates[dates.length - 1]);
-  return { locationName: place.name, source: key ? "openweather" : "open-meteo", ...data };
+  if (key) {
+    try {
+      return { locationName: place.name, source: "openweather", ...(await openWeather(place, dates, key)) };
+    } catch {
+      // OpenWeather's free forecast only covers 5 days — fall back to Open-Meteo.
+    }
+  }
+  return { locationName: place.name, source: "open-meteo", ...(await openMeteo(place, dates[0], dates[dates.length - 1])) };
+}
+
+/** Climate at home right now (today + next 2 days), used for the temperature-shift comparison. */
+export async function getCurrentClimate(place: Coords): Promise<Climate> {
+  return getTripClimate(place, isoToday(), 3);
 }

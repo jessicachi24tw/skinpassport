@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import type { SkinProfile } from "@/lib/types";
+import CameraCapture from "./CameraCapture";
 import { Button, Card, ErrorText, ScoreBar, StepTitle } from "./ui";
 
 /** Shrink the photo in the browser so uploads stay small and fast. */
@@ -20,12 +21,13 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export default function SkinStep({ skin, onSkin }: { skin: SkinProfile | null; onSkin: (s: SkinProfile) => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [camera, setCamera] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
 
-  async function analyze(body: object) {
+  async function analyze(body: { image?: string; demo?: boolean }) {
     setError("");
-    setBusy("Uploading photo…");
+    setBusy(body.demo ? "Loading demo scan…" : "Uploading photo…");
     try {
       const res = await fetch("/api/skin/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const data = await res.json();
@@ -48,7 +50,7 @@ export default function SkinStep({ skin, onSkin }: { skin: SkinProfile | null; o
 
   async function onFile(file?: File) {
     if (!file) return;
-    if (!/image\/(jpeg|png)/.test(file.type) && !/\.(jpe?g|png|heic)$/i.test(file.name)) {
+    if (!/image\/(jpeg|png)/.test(file.type) && !/\.(jpe?g|png)$/i.test(file.name)) {
       setError("Please choose a JPG or PNG photo.");
       return;
     }
@@ -63,25 +65,49 @@ export default function SkinStep({ skin, onSkin }: { skin: SkinProfile | null; o
 
   return (
     <Card>
-      <StepTitle n={1} title="Scan your skin" hint="A clear, front-facing selfie in daylight. No makeup works best." />
-      <input ref={fileRef} type="file" accept="image/jpeg,image/png" capture="user" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} />
-      <div className="flex gap-2">
-        <Button onClick={() => fileRef.current?.click()} disabled={!!busy} className="flex-1">
-          Upload selfie
+      <StepTitle n={1} title="Scan your skin" hint="Take a selfie now in daylight, without makeup, to see today's skin condition." />
+      <input ref={fileRef} type="file" accept="image/jpeg,image/png" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} />
+
+      <button
+        onClick={() => setCamera(true)}
+        disabled={!!busy}
+        className="group relative flex w-full items-center gap-4 overflow-hidden rounded-2xl bg-ink p-4 text-left text-paper transition hover:bg-ink/95 disabled:opacity-50"
+      >
+        <span className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-coral">
+          <span className="absolute inset-0 animate-ping rounded-full bg-coral/40 group-disabled:hidden" />
+          <svg viewBox="0 0 24 24" className="relative h-7 w-7" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+            <path d="M4 8h3l2-3h6l2 3h3v11H4z" strokeLinejoin="round" />
+            <circle cx="12" cy="13" r="3.5" />
+          </svg>
+        </span>
+        <span>
+          <span className="block font-semibold">Take a photo now</span>
+          <span className="block text-xs text-paper/70">Opens your camera with a face guide</span>
+        </span>
+      </button>
+
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <Button variant="ghost" onClick={() => fileRef.current?.click()} disabled={!!busy}>
+          Upload photo
         </Button>
         <Button variant="ghost" onClick={() => analyze({ demo: true })} disabled={!!busy}>
           Use demo scan
         </Button>
       </div>
+
       {busy && (
-        <p className="mt-4 flex items-center gap-2 text-sm text-ink-soft">
+        <div className="mt-4 flex items-center gap-3 rounded-xl bg-paper p-3 text-sm text-ink-soft">
+          {preview && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={preview} alt="" className="h-10 w-10 rounded-lg object-cover" />
+          )}
           <span className="h-3 w-3 animate-spin rounded-full border-2 border-ink/20 border-t-ink" /> {busy}
-        </p>
+        </div>
       )}
       <ErrorText>{error}</ErrorText>
 
-      {skin && (
-        <div className="mt-5 flex gap-4">
+      {skin && !busy && (
+        <div className="mt-5 flex animate-[fadeUp_.4s_ease-out] gap-4">
           {preview && skin.source === "youcam" && (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={preview} alt="Your selfie" className="h-28 w-20 shrink-0 rounded-xl object-cover" />
@@ -92,7 +118,12 @@ export default function SkinStep({ skin, onSkin }: { skin: SkinProfile | null; o
               {skin.overall != null && (
                 <p className="mt-1 text-sm">
                   Overall <b className="tabular-nums">{skin.overall}</b>
-                  {skin.skinAge != null && <> · Skin age <b className="tabular-nums">{skin.skinAge}</b></>}
+                  {skin.skinAge != null && (
+                    <>
+                      {" "}
+                      · Skin age <b className="tabular-nums">{skin.skinAge}</b>
+                    </>
+                  )}
                 </p>
               )}
             </div>
@@ -103,6 +134,17 @@ export default function SkinStep({ skin, onSkin }: { skin: SkinProfile | null; o
             <p className="text-xs text-ink-soft">Higher = healthier. Scores by YouCam AI Skin Analysis.</p>
           </div>
         </div>
+      )}
+
+      {camera && (
+        <CameraCapture
+          onClose={() => setCamera(false)}
+          onCapture={(dataUrl) => {
+            setCamera(false);
+            setPreview(dataUrl);
+            analyze({ image: dataUrl });
+          }}
+        />
       )}
     </Card>
   );

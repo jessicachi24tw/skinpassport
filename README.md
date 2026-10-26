@@ -12,16 +12,21 @@ SkinPassport scans your skin with the **YouCam AI Skin Analysis API**, pulls the
 
 ![Architecture](docs/architecture.png)
 
-| New York, dry winter | Miami, high UV |
-|---|---|
-| ![New York result](docs/screenshot-nyc.png) | ![Miami result](docs/screenshot-miami.png) |
+| Route + flight map | New York, dry winter | Miami, high UV | Product page |
+|---|---|---|---|
+| ![Route](docs/screenshot-route.png) | ![New York result](docs/screenshot-nyc.png) | ![Miami result](docs/screenshot-miami.png) | ![Product page](docs/screenshot-product.png) |
 
 ---
 
 ## How it works
 
-1. **Skin scan** — the browser resizes the selfie and sends it to `/api/skin/analyze`. The server registers the file with YouCam (`POST /s2s/v2.0/file/skin-analysis`), uploads the bytes to the presigned URL, starts a task (`POST /s2s/v2.0/task/skin-analysis`) and the browser polls `/api/skin/status` until the task succeeds. We use the SD concerns `moisture, oiliness, redness, age_spot, acne, pore, texture, radiance` (scores 1–100, higher = healthier).
-2. **Trip** — type it naturally ("Ski trip to Hokkaido next week for 4 days") or fill in the form. `/api/trip/parse` uses Claude when configured, with a keyword fallback. `/api/weather` geocodes the destination and summarises the forecast for the trip dates.
+1. **Skin scan** — take a photo in the in-app camera (face-guide oval, 3-second timer, low-light warning) or upload one. The browser crops and resizes the selfie and sends it to `/api/skin/analyze`. The server registers the file with YouCam (`POST /s2s/v2.0/file/skin-analysis`), uploads the bytes to the presigned URL, starts a task (`POST /s2s/v2.0/task/skin-analysis`) and the browser polls `/api/skin/status` until the task succeeds. We use the SD concerns `moisture, oiliness, redness, age_spot, acne, pore, texture, radiance` (scores 1–100, higher = healthier).
+2. **Trip** — in this order:
+   - **Route:** *From* and *To*, each picked **country first, then city** with type-ahead autocomplete (`/api/places`: instant local matches + live Open-Meteo geocoding). "Use my location" fills *From*. A world map animates a plane (or train, car, ship) along the great-circle route and shows distance and travel time.
+   - **Dates:** start date + number of days.
+   - **Getting there:** multi-select plane, train, car, bus, subway, ship.
+   - **Activities & special notes (optional):** multi-select tags (beach, skiing, hiking, festival…). Tapping a tag also writes it into the notes box, which the user can edit; notes are passed to the coach note.
+   `/api/weather` returns the forecast for the trip window **and the current climate at home**, so the engine can react to the change (e.g. "25°C colder and 38 pts drier than Taipei").
 3. **Advice engine** (`src/lib/engine/necessity.ts`) — a transparent rule engine converts skin scores into concern levels (dryness, oil, sensitivity, spots) and the climate into stress factors (UV with snow/water reflection, dry air, humidity, cold, heat, pollution). Each category gets a Necessity Score and a tier:
 
    | Score | Tier | Kit |
@@ -31,9 +36,10 @@ SkinPassport scans your skin with the **YouCam AI Skin Analysis API**, pulls the
    | 35–49 | Nice to have | Complete |
    | < 35 | Skip | — |
 
-   The sunscreen spec is derived from effective UV: SPF 50+ / PA++++ when UV ≥ 8, water-resistant for beach, ski and outdoor trips.
+   The engine also scores the **change from home**: big temperature drops, drier air or a UV jump raise barrier cream, hydration, lip care and sunscreen. Flights raise the face-mist score more than trains or buses. The sunscreen spec is derived from effective UV: SPF 50+ / PA++++ when UV ≥ 8, water-resistant for beach, ski and outdoor trips.
 4. **Shop provider** (`src/lib/shop/`) — picks the best-fitting product per category (SPF requirement, water resistance, sensitive-skin friendly, price). The MVP uses a curated catalog with retailer links; the `ShopProvider` interface lets you swap in a real store API. See [docs/shop-api-survey.md](docs/shop-api-survey.md).
-5. **Coach note** — Claude writes a 2–3 sentence explanation from the engine's output. The LLM never decides what to recommend, so results are stable and explainable.
+5. **Product pages** (`/product/[id]`, statically generated) — illustrated pack shot, description, key ingredients, how to use, carry-on tip, "why it's in your plan" (score, tier and reasons from your plan), alternatives, add to bag and Buy now. A bag sheet keeps picked items and an estimated total across pages.
+6. **Coach note** — Claude writes a 2–3 sentence explanation from the engine's output. The LLM never decides what to recommend, so results are stable and explainable.
 
 ## Tech stack
 
@@ -44,7 +50,8 @@ SkinPassport scans your skin with the **YouCam AI Skin Analysis API**, pulls the
 | Skin AI | YouCam AI Skin Analysis API |
 | Weather | Open-Meteo (default, no key) or OpenWeather |
 | LLM | Anthropic Claude (optional) |
-| Tests | Vitest (`src/lib/engine/__tests__`) |
+| Map | d3-geo + world-atlas (Natural Earth), animated in SVG |
+| Tests | Vitest (`src/lib/**/__tests__`) |
 
 ## Project structure
 
@@ -52,17 +59,20 @@ SkinPassport scans your skin with the **YouCam AI Skin Analysis API**, pulls the
 src/
   app/
     page.tsx                 # mobile UI (3 steps)
+    product/[id]/page.tsx    # product detail pages
     api/skin/analyze         # YouCam: upload + create task
     api/skin/status          # YouCam: poll task
-    api/weather              # forecast or demo scenario
-    api/trip/parse           # free-text trip -> structured trip
+    api/places               # country-filtered city autocomplete
+    api/weather              # trip forecast, home climate, or demo scenario
     api/plan                 # engine + kits + coach note
     api/health               # which integrations are live
-  components/                # SkinStep, TripStep, Results, ui
+  components/                # CameraCapture, LocationPicker, TripMap, Results, ProductView, Bag…
   lib/
     engine/                  # necessity.ts, kits.ts, scenarios.ts (pure, tested)
     server/                  # youcam.ts, weather.ts, llm.ts (server-only)
     shop/                    # catalog.ts, provider.ts
+    places.ts                # countries + popular cities for instant autocomplete
+    store.ts                 # client state shared across pages (sessionStorage)
 docs/                        # architecture, screenshots, shop API survey
 ```
 
@@ -84,6 +94,7 @@ Every integration has a fallback, so the app runs with **no keys at all**: demo 
 - Product prices are estimates; the next step is a live Shop API (Shopify Storefront or Amazon Creators API).
 - Forecasts reach 16 days ahead (5 days with OpenWeather); later trips should use climate averages.
 - Calendar sync (Google Calendar) to detect upcoming trips automatically.
+- Real product photos and live prices from a store API.
 - YouCam Virtual Try-On for the recommended products.
 
 Not medical advice.

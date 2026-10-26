@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { normalizeResult } from "../youcam";
-import { parseTripHeuristic } from "../llm";
+import { searchCountries, searchLocalCities } from "../../places";
 import { pm25ToUsAqi } from "../weather";
 
 describe("YouCam result normalization", () => {
@@ -22,15 +22,14 @@ describe("YouCam result normalization", () => {
   });
 });
 
-describe("trip text fallback parser", () => {
-  const today = new Date("2026-10-26T12:00:00");
-  it("parses an English trip", () => {
-    const t = parseTripHeuristic("Ski trip to Hokkaido next week for 4 days", today);
-    expect(t).toMatchObject({ activity: "ski", days: 4, destination: "Hokkaido", startDate: "2026-11-02" });
+describe("place search", () => {
+  it("finds US cities by prefix", () => {
+    const names = searchLocalCities("new", "US").map((p) => p.name);
+    expect(names.slice(0, 4)).toEqual(expect.arrayContaining(["New York", "New Orleans"]));
+    expect(names).toContain("Newark");
   });
-  it("parses a Chinese trip", () => {
-    const t = parseTripHeuristic("下週去北海道滑雪 4 天", today);
-    expect(t).toMatchObject({ activity: "ski", days: 4, destination: "Sapporo, Japan" });
+  it("finds countries by prefix", () => {
+    expect(searchCountries("uni").map((c) => c.code)).toEqual(expect.arrayContaining(["US", "GB", "AE"]));
   });
 });
 
