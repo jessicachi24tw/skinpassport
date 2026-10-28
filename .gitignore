@@ -45,3 +45,4 @@ next-env.d.ts
 /.asset-cache
 /public/mediapipe
 /public/models
+/_to_delete
