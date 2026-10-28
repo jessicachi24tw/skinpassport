@@ -20,7 +20,7 @@ SkinPassport scans your skin with the **YouCam AI Skin Analysis API**, pulls the
 
 ## How it works
 
-1. **Skin scan** — take a photo in the in-app camera (face-guide oval, 3-second timer, low-light warning) or upload one. The browser crops and resizes the selfie and sends it to `/api/skin/analyze`. The server registers the file with YouCam (`POST /s2s/v2.0/file/skin-analysis`), uploads the bytes to the presigned URL, starts a task (`POST /s2s/v2.0/task/skin-analysis`) and the browser polls `/api/skin/status` until the task succeeds. We use the SD concerns `moisture, oiliness, redness, age_spot, acne, pore, texture, radiance` (scores 1–100, higher = healthier).
+1. **Skin scan** — a passport-style scanner: the in-app camera tracks 478 face points live with **MediaPipe Face Landmarker** (in the browser), guides the user into the oval and auto-captures when they hold still. While YouCam analyzes, the photo turns into a rotating 3D face mesh with a checklist that follows the real request status. The result shows **YouCam's per-concern masks** over the photo — tap Moisture, Redness or Spots to see where YouCam found it. Uploading a photo works too. The browser crops and resizes the selfie and sends it to `/api/skin/analyze`. The server registers the file with YouCam (`POST /s2s/v2.0/file/skin-analysis`), uploads the bytes to the presigned URL, starts a task (`POST /s2s/v2.0/task/skin-analysis`) and the browser polls `/api/skin/status` until the task succeeds. We use the SD concerns `moisture, oiliness, redness, age_spot, acne, pore, texture, radiance` (scores 1–100, higher = healthier).
 2. **Trip** — in this order:
    - **Route:** *From* and *To*, each picked **country first, then city** with type-ahead autocomplete (`/api/places`: instant local matches + live Open-Meteo geocoding). "Use my location" fills *From*. A world map animates a plane (or train, car, ship) along the great-circle route and shows distance and travel time.
    - **Dates:** start date + number of days.
@@ -37,8 +37,9 @@ SkinPassport scans your skin with the **YouCam AI Skin Analysis API**, pulls the
    | < 35 | Skip | — |
 
    The engine also scores the **change from home**: big temperature drops, drier air or a UV jump raise barrier cream, hydration, lip care and sunscreen. Flights raise the face-mist score more than trains or buses. The sunscreen spec is derived from effective UV: SPF 50+ / PA++++ when UV ≥ 8, water-resistant for beach, ski and outdoor trips.
-4. **Shop provider** (`src/lib/shop/`) — picks the best-fitting product per category (SPF requirement, water resistance, sensitive-skin friendly, price). The MVP uses a curated catalog with retailer links; the `ShopProvider` interface lets you swap in a real store API. See [docs/shop-api-survey.md](docs/shop-api-survey.md).
-5. **Product pages** (`/product/[id]`, statically generated) — illustrated pack shot, description, key ingredients, how to use, carry-on tip, "why it's in your plan" (score, tier and reasons from your plan), alternatives, add to bag and Buy now. A bag sheet keeps picked items and an estimated total across pages.
+4. **Shop provider** (`src/lib/shop/`) — picks the best-fitting product per category **for each budget tier (Value / Balanced / Premium)** (SPF requirement, water resistance, sensitive-skin friendly, price). The MVP uses a curated catalog with retailer links; the `ShopProvider` interface lets you swap in a real store API. See [docs/shop-api-survey.md](docs/shop-api-survey.md).
+   On the results, users switch budget tiers instantly and tick **"I already have this"**: the item moves to "packed from home" (with a reminder of the spec it must meet, e.g. SPF 50+ water-resistant) and drops out of the to-buy total.
+5. **Product pages** (`/product/[id]`, statically generated) — background-removed product photo from Open Beauty Facts (illustrated fallback), description, key ingredients, how to use, carry-on tip, "why it's in your plan" (score, tier and reasons from your plan), alternatives, add to bag and Buy now. A bag sheet keeps picked items and an estimated total across pages.
 6. **Coach note** — Claude writes a 2–3 sentence explanation from the engine's output. The LLM never decides what to recommend, so results are stable and explainable.
 
 ## Tech stack
@@ -51,6 +52,8 @@ SkinPassport scans your skin with the **YouCam AI Skin Analysis API**, pulls the
 | Weather | Open-Meteo (default, no key) or OpenWeather |
 | LLM | Anthropic Claude (optional) |
 | Map | d3-geo + world-atlas (Natural Earth), animated in SVG |
+| Face scan | MediaPipe Face Landmarker (in-browser, 478 3D points) + YouCam masks |
+| Product photos | Open Beauty Facts (CC BY-SA 3.0), backgrounds removed with @imgly/background-removal-node |
 | Tests | Vitest (`src/lib/**/__tests__`) |
 
 ## Project structure
@@ -85,7 +88,10 @@ npm install
 cp .env.example .env.local   # add YOUCAM_API_KEY (others optional)
 npm run dev                  # http://localhost:3000
 npm test                     # engine unit tests
+npm run setup:assets         # one-time: product photos + face-scan model (needs internet, ~5 min)
 ```
+
+`setup:assets` downloads front photos from Open Beauty Facts, removes the backgrounds on your machine, and saves them to `public/products/`. It also downloads the MediaPipe face model to `public/models/`. Products without a photo keep the illustrated pack shot, and the app loads the face model from Google's CDN if it isn't saved locally.
 
 Every integration has a fallback, so the app runs with **no keys at all**: demo skin scan, Open-Meteo weather, template coach note. Set `MOCK_YOUCAM=1` to film the demo without spending YouCam units.
 
@@ -94,7 +100,12 @@ Every integration has a fallback, so the app runs with **no keys at all**: demo 
 - Product prices are estimates; the next step is a live Shop API (Shopify Storefront or Amazon Creators API).
 - Forecasts reach 16 days ahead (5 days with OpenWeather); later trips should use climate averages.
 - Calendar sync (Google Calendar) to detect upcoming trips automatically.
-- Real product photos and live prices from a store API.
+- Live prices from a store API.
 - YouCam Virtual Try-On for the recommended products.
+
+## Credits
+
+- Product photos: [Open Beauty Facts](https://world.openbeautyfacts.org) contributors, [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/); edited (backgrounds removed). Full list in [docs/IMAGE_CREDITS.md](docs/IMAGE_CREDITS.md).
+- Map data: Natural Earth via world-atlas.
 
 Not medical advice.

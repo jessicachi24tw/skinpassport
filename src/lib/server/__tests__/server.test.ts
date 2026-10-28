@@ -7,7 +7,7 @@ describe("YouCam result normalization", () => {
   it("maps ui_score per concern plus overall and skin age", () => {
     const skin = normalizeResult({
       output: [
-        { type: "moisture", ui_score: 31 },
+        { type: "moisture", ui_score: 31, mask_urls: ["https://example.com/moisture_output.png"] },
         { type: "redness", ui_score: 55 },
         { type: "all", score: 63.4 },
         { type: "skin_age", score: 28.6 },
@@ -19,6 +19,7 @@ describe("YouCam result normalization", () => {
     expect(skin.scores.oiliness).toBe(60); // neutral fallback
     expect(skin.overall).toBe(63);
     expect(skin.skinAge).toBe(29);
+    expect(skin.masks).toEqual({ moisture: "https://example.com/moisture_output.png" });
   });
 });
 

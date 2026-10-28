@@ -1,5 +1,6 @@
-// Illustrated pack shot (no third-party product photos). Shape follows the texture,
-// colour follows the brand, so each product page still feels distinct.
+// Product visual: the background-removed Open Beauty Facts photo when we have one,
+// otherwise an illustrated pack shot (shape follows texture, colour follows brand).
+import Image from "next/image";
 import type { Product } from "@/lib/types";
 
 const BRAND_COLORS: Record<string, [string, string]> = {
@@ -17,10 +18,40 @@ const BRAND_COLORS: Record<string, [string, string]> = {
   Aquaphor: ["#eef3fb", "#1e4a9a"],
   Laneige: ["#fce6ef", "#c94f86"],
   "Avène": ["#f2f7fb", "#e2546b"],
+  Vanicream: ["#ffffff", "#2d6db5"],
+  "First Aid Beauty": ["#ffffff", "#c2283a"],
+  Vichy: ["#ffffff", "#1d4f91"],
+  belif: ["#eef5fb", "#2e5c8a"],
+  Tatcha: ["#f6f0f5", "#7a2a55"],
+  Garnier: ["#fff6dd", "#e08a00"],
+  SkinCeuticals: ["#f4f4f4", "#1f1f1f"],
+  Clarins: ["#fff6f5", "#b3122e"],
+  fresh: ["#fbf7ef", "#8a6a3c"],
+  "Mario Badescu": ["#fbeff1", "#b04a64"],
+  Caudalie: ["#f8f1ea", "#7c5a3c"],
+  Shiseido: ["#fdf3f3", "#c4161c"],
+  "Supergoop!": ["#fff7e0", "#e88b1a"],
 };
+
+/** Premium cut-out photo on a soft, brand-tinted backdrop. */
+function PhotoShot({ product, size, accent }: { product: Product; size: number; accent: string }) {
+  return (
+    <div className="relative shrink-0 overflow-hidden rounded-[22%]" style={{ width: size, height: size, background: `radial-gradient(circle at 50% 38%, #ffffff 0%, ${accent}14 70%, ${accent}24 100%)` }}>
+      <div className="absolute inset-x-[22%] bottom-[9%] h-[6%] rounded-[50%] bg-ink/15 blur-[3px]" aria-hidden />
+      <Image
+        src={product.image!.src}
+        alt={`${product.brand} ${product.name}`}
+        fill
+        sizes={`${size}px`}
+        className="object-contain p-[9%] drop-shadow-[0_6px_10px_rgba(31,42,68,0.18)]"
+      />
+    </div>
+  );
+}
 
 export default function ProductShot({ product, size = 120 }: { product: Product; size?: number }) {
   const [body, accent] = BRAND_COLORS[product.brand] ?? ["#ffffff", "#1f2a44"];
+  if (product.image) return <PhotoShot product={product} size={size} accent={accent} />;
   const t = product.texture ?? "light";
   const SHORT: Record<string, string> = { "La Roche-Posay": "LRP", "The Ordinary": "ORDINARY", "L'Oréal Paris": "L'ORÉAL", "Dr. Jart+": "DR.JART+" };
   const label = SHORT[product.brand] ?? product.brand.slice(0, 10);

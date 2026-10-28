@@ -36,6 +36,10 @@ body {
   from { transform: translateY(100%); }
   to { transform: none; }
 }
+@keyframes scanY {
+  from { transform: translateY(0); }
+  to { transform: translateY(56px); }
+}
 @keyframes pop {
   0% { transform: scale(0.6); }
   60% { transform: scale(1.25); }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { climateFactors, climateShift, computeNeeds, describeShift, sunscreenSpec, tierFor } from "../necessity";
-import { buildKits } from "../kits";
+import { buildKits, resolveKit } from "../kits";
 import { catalogProvider } from "../../shop/provider";
 import { DEMO_ORIGIN_CLIMATE, DEMO_SKIN, getScenario } from "../scenarios";
 import type { Transport } from "../../types";
@@ -13,7 +13,7 @@ const run = async (id: string, transport: Transport[] = ["plane"]) => {
   const kits = await buildKits(needs, catalogProvider, { sensitive: true, effectiveUv: f.effectiveUv, activities: s.activities });
   const byId = Object.fromEntries(needs.map((n) => [n.id, n]));
   const essential = kits[0].items.map((r) => r.need.id);
-  const sunscreen = kits[1].items.find((r) => r.need.id === "sunscreen")?.product;
+  const sunscreen = kits[1].items.find((r) => r.need.id === "sunscreen")?.options.value;
   return { byId, essential, sunscreen, kits };
 };
 
@@ -73,11 +73,27 @@ describe("necessity engine", () => {
     expect(needs.find((n) => n.id === "gentle_cleanser")!.reasons.join(" ")).toMatch(/chlorine/);
   });
 
-  it("never lists the same product twice in a kit", async () => {
+  it("never lists the same product twice in a kit (multi-use products show coveredBy)", async () => {
     for (const id of ["nyc-winter", "miami-uv", "hokkaido-ski"]) {
       const { kits } = await run(id);
-      const ids = kits[1].items.map((i) => i.product?.id).filter(Boolean);
-      expect(new Set(ids).size).toBe(ids.length);
+      for (const tier of ["value", "balanced", "premium"] as const) {
+        const ids = resolveKit(kits[1], tier).filter((i) => !i.coveredBy).map((i) => i.product?.id).filter(Boolean);
+        expect(new Set(ids).size).toBe(ids.length);
+      }
+    }
+  });
+
+  it("offers a product in every budget tier, matching the tier when possible", async () => {
+    const { kits } = await run("miami-uv");
+    for (const r of kits[1].items) {
+      expect(r.options.value && r.options.balanced && r.options.premium).toBeTruthy();
+    }
+    const sun = kits[1].items.find((r) => r.need.id === "sunscreen")!;
+    expect(sun.options.value?.tier).toBe("value");
+    expect(sun.options.premium?.tier).toBe("premium");
+    for (const t of ["value", "balanced", "premium"] as const) {
+      expect(sun.options[t]?.spf).toBeGreaterThanOrEqual(50);
+      expect(sun.options[t]?.waterResistant).toBe(true);
     }
   });
 });

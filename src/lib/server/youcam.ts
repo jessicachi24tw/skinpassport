@@ -84,11 +84,12 @@ export async function startSkinAnalysis(bytes: Buffer, contentType: "image/jpeg"
   return String((task.data as { task_id: string | number }).task_id);
 }
 
-type Output = { type: string; ui_score?: number; score?: number };
+type Output = { type: string; ui_score?: number; score?: number; mask_urls?: string[] };
 
 /** Convert YouCam's result list into our SkinProfile. */
 export function normalizeResult(results: { output?: Output[] } | undefined): SkinProfile {
   const scores: Partial<SkinScores> = {};
+  const masks: SkinProfile["masks"] = {};
   let overall: number | null = null;
   let skinAge: number | null = null;
   for (const item of results?.output ?? []) {
@@ -96,6 +97,8 @@ export function normalizeResult(results: { output?: Output[] } | undefined): Ski
     else if (item.type === "skin_age" && typeof item.score === "number") skinAge = Math.round(item.score);
     else if ((ACTIONS as readonly string[]).includes(item.type) && typeof item.ui_score === "number") {
       scores[item.type as keyof SkinScores] = item.ui_score;
+      const mask = item.mask_urls?.[0];
+      if (mask) masks[item.type as keyof SkinScores] = mask;
     }
   }
   return {
@@ -105,6 +108,7 @@ export function normalizeResult(results: { output?: Output[] } | undefined): Ski
     skinAge,
     // Neutral fallback (60) if YouCam skipped a concern.
     scores: { moisture: 60, oiliness: 60, redness: 60, age_spot: 60, ...scores },
+    masks,
   };
 }
 

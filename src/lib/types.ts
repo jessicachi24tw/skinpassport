@@ -12,12 +12,16 @@ export interface SkinScores {
   radiance?: number;
 }
 
+export type ConcernKey = keyof SkinScores;
+
 export interface SkinProfile {
   source: "youcam" | "demo";
   label: string;
   overall: number | null;
   skinAge: number | null;
   scores: SkinScores;
+  /** YouCam per-concern mask PNGs (transparent overlays, same size as the photo). Expire after ~2 h. */
+  masks?: Partial<Record<ConcernKey, string>>;
 }
 
 /** A geocoded place (city) picked from autocomplete. */
@@ -96,10 +100,20 @@ export interface Need {
 
 export type Texture = "rich" | "light" | "gel" | "spray" | "balm";
 
+/** Budget tier shown to the user as Value / Balanced / Premium. */
+export type BudgetTier = "value" | "balanced" | "premium";
+
+export interface ProductImage {
+  src: string; // background-removed PNG under /public/products
+  code: string; // Open Beauty Facts barcode
+  sourceUrl: string; // Open Beauty Facts product page (CC BY-SA 3.0)
+}
+
 export interface Product {
   id: string;
   brand: string;
   name: string;
+  tier: BudgetTier;
   needs: NeedId[];
   estPriceUsd: number;
   spf?: number;
@@ -111,18 +125,19 @@ export interface Product {
   keyIngredients: string[];
   howToUse: string;
   url: string;
+  image: ProductImage | null;
 }
 
 export interface Recommendation {
   need: Need;
-  product: Product | null;
+  /** Best product for each budget tier (falls back to the nearest tier). */
+  options: Record<BudgetTier, Product | null>;
 }
 
 export interface Kit {
   id: "essential" | "complete";
   title: string;
   items: Recommendation[];
-  subtotalUsd: number;
 }
 
 /** How the destination differs from home. */

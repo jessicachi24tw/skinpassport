@@ -10,12 +10,17 @@ import { TIER_LABEL } from "./Results";
 import { Card, Stars } from "./ui";
 
 export default function ProductView({ product, alternatives }: { product: Product; alternatives: Product[] }) {
-  const { plan, climate, bag } = useApp();
+  const { plan, climate, bag, budget } = useApp();
   const inBag = bag.includes(product.id);
   // Find why this product is in the user's plan (if it is).
-  const rec = plan?.kits.find((k) => k.id === "complete")?.items.find((r) => r.product?.id === product.id) ?? null;
+  const complete = plan?.kits.find((k) => k.id === "complete");
+  const rec =
+    complete?.items.find((r) => r.options[budget]?.id === product.id) ??
+    complete?.items.find((r) => Object.values(r.options).some((o) => o?.id === product.id)) ??
+    null;
   const facts: [string, string][] = [
     ["Best for", product.needs.map((n) => NEED_TITLES[n]).join(", ")],
+    ["Price range", { value: "Value · drugstore", balanced: "Balanced · mid-range", premium: "Premium · luxury" }[product.tier]],
     ["Texture", product.texture ? product.texture[0].toUpperCase() + product.texture.slice(1) : "—"],
     ...(product.spf ? ([["Sun protection", `SPF ${product.spf}${product.waterResistant ? " · water-resistant" : ""}`]] as [string, string][]) : []),
     ["Sensitive skin", product.sensitiveFriendly ? "Suitable" : "Patch-test first"],
@@ -29,8 +34,21 @@ export default function ProductView({ product, alternatives }: { product: Produc
 
       <Card className="text-center">
         <div className="flex justify-center">
-          <ProductShot product={product} size={180} />
+          <ProductShot product={product} size={220} />
         </div>
+        {product.image && (
+          <p className="mt-1 text-[10px] text-ink-soft">
+            Photo:{" "}
+            <a href={product.image.sourceUrl} target="_blank" rel="noopener noreferrer" className="underline">
+              Open Beauty Facts
+            </a>{" "}
+            contributors,{" "}
+            <a href="https://creativecommons.org/licenses/by-sa/3.0/" target="_blank" rel="noopener noreferrer" className="underline">
+              CC BY-SA 3.0
+            </a>{" "}
+            · background removed
+          </p>
+        )}
         <p className="mt-3 text-xs font-semibold uppercase tracking-[0.15em] text-ink-soft">{product.brand}</p>
         <h1 className="mt-1 font-display text-2xl leading-tight">{product.name}</h1>
         <p className="mt-2 text-sm text-ink-soft">{product.tagline}</p>

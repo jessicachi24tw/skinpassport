@@ -2,7 +2,7 @@
 // It survives navigation and page refreshes (sessionStorage) without a server.
 
 import { useSyncExternalStore } from "react";
-import type { Climate, PlanResult, SkinProfile, TripInput } from "./types";
+import type { BudgetTier, Climate, NeedId, PlanResult, SkinProfile, TripInput } from "./types";
 
 export interface AppState {
   skin: SkinProfile | null;
@@ -12,6 +12,10 @@ export interface AppState {
   plan: PlanResult | null;
   scenarioId: string | null;
   bag: string[]; // product ids
+  photo: string | null; // scanned selfie (data URL), shown with YouCam masks
+  photoMirrored: boolean; // camera selfies are shown mirrored
+  budget: BudgetTier;
+  owned: NeedId[]; // categories the user already has at home
 }
 
 export const INITIAL: AppState = {
@@ -22,9 +26,13 @@ export const INITIAL: AppState = {
   plan: null,
   scenarioId: null,
   bag: [],
+  photo: null,
+  photoMirrored: false,
+  budget: "balanced",
+  owned: [],
 };
 
-const KEY = "skinpassport:v2";
+const KEY = "skinpassport:v3";
 let state: AppState = INITIAL;
 let loaded = false;
 const listeners = new Set<() => void>();
@@ -46,7 +54,12 @@ export function setApp(patch: Partial<AppState> | ((s: AppState) => Partial<AppS
   try {
     window.sessionStorage.setItem(KEY, JSON.stringify(state));
   } catch {
-    /* storage may be unavailable (private mode) — state still lives in memory */
+    // Storage full or unavailable: keep everything except the photo, state still lives in memory.
+    try {
+      window.sessionStorage.setItem(KEY, JSON.stringify({ ...state, photo: null }));
+    } catch {
+      /* private mode */
+    }
   }
   listeners.forEach((l) => l());
 }
@@ -64,3 +77,4 @@ export const useApp = () => useSyncExternalStore(subscribe, getSnapshot, () => I
 
 export const toggleBag = (id: string) => setApp((s) => ({ bag: s.bag.includes(id) ? s.bag.filter((x) => x !== id) : [...s.bag, id] }));
 export const addToBag = (ids: string[]) => setApp((s) => ({ bag: Array.from(new Set([...s.bag, ...ids])) }));
+export const toggleOwned = (id: NeedId) => setApp((s) => ({ owned: s.owned.includes(id) ? s.owned.filter((x) => x !== id) : [...s.owned, id] }));

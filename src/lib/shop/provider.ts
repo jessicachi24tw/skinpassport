@@ -2,9 +2,9 @@
 // To plug in a real store (e.g. Shopify Storefront API or Amazon Creators API),
 // implement `ShopProvider` and return it from `getShopProvider()`.
 
-import type { Need, Product } from "../types";
+import type { BudgetTier, Need, Product } from "../types";
 import { sunscreenSpec } from "../engine/necessity";
-import { CATALOG } from "./catalog";
+import { CATALOG, TIERS } from "./catalog";
 
 export interface PickContext {
   sensitive: boolean;
@@ -14,7 +14,8 @@ export interface PickContext {
 
 export interface ShopProvider {
   name: string;
-  pick(need: Need, ctx: PickContext): Promise<Product | null>;
+  /** Best product for this need within one budget tier, or null if none fits. */
+  pick(need: Need, tier: BudgetTier, ctx: PickContext): Promise<Product | null>;
 }
 
 /** Score how well a product fits a need. Higher is better; -1 = not allowed. */
@@ -31,16 +32,17 @@ export function fitScore(p: Product, need: Need, ctx: PickContext): number {
   }
   if (ctx.sensitive && p.sensitiveFriendly) s += 3;
   if (p.needs[0] === need.id) s += 2; // primary purpose beats multi-use
-  s -= p.estPriceUsd / 50; // gentle preference for cheaper items
+  s -= p.estPriceUsd / 100; // within a tier, gently prefer the cheaper item
   return s;
 }
 
 export const catalogProvider: ShopProvider = {
   name: "local-catalog",
-  async pick(need, ctx) {
+  async pick(need, tier, ctx) {
     let best: Product | null = null;
     let bestScore = -1;
     for (const p of CATALOG) {
+      if (p.tier !== tier) continue;
       const s = fitScore(p, need, ctx);
       if (s > bestScore) {
         best = p;
@@ -50,6 +52,20 @@ export const catalogProvider: ShopProvider = {
     return best;
   },
 };
+
+/** Tiers to try, nearest first, when a tier has no fitting product. */
+const FALLBACK: Record<BudgetTier, BudgetTier[]> = {
+  value: ["value", "balanced", "premium"],
+  balanced: ["balanced", "value", "premium"],
+  premium: ["premium", "balanced", "value"],
+};
+
+export async function pickAllTiers(provider: ShopProvider, need: Need, ctx: PickContext): Promise<Record<BudgetTier, Product | null>> {
+  const exact = Object.fromEntries(await Promise.all(TIERS.map(async (t) => [t, await provider.pick(need, t, ctx)] as const))) as Record<BudgetTier, Product | null>;
+  const out = {} as Record<BudgetTier, Product | null>;
+  for (const t of TIERS) out[t] = FALLBACK[t].map((f) => exact[f]).find(Boolean) ?? null;
+  return out;
+}
 
 export function getShopProvider(): ShopProvider {
   return catalogProvider;

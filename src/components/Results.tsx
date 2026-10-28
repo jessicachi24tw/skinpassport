@@ -2,8 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { addToBag, toggleBag, useApp } from "@/lib/store";
-import type { Climate, ClimateShift, Kit, PlanResult, Tier } from "@/lib/types";
+import { resolveKit } from "@/lib/engine/kits";
+import { addToBag, setApp, toggleBag, toggleOwned, useApp } from "@/lib/store";
+import type { BudgetTier, Climate, ClimateShift, Kit, NeedId, PlanResult, Tier } from "@/lib/types";
+
+type ResolvedItem = ReturnType<typeof resolveKit>[number];
 import ProductShot from "./ProductShot";
 import { Card, Stars, StepTitle } from "./ui";
 
@@ -72,24 +75,37 @@ function ClimateStrip({ c, origin, shift }: { c: Climate; origin: Climate | null
   );
 }
 
-function KitList({ kit }: { kit: Kit }) {
+const BUDGETS: { id: BudgetTier; label: string; hint: string }[] = [
+  { id: "value", label: "Value", hint: "Drugstore" },
+  { id: "balanced", label: "Balanced", hint: "Mid-range" },
+  { id: "premium", label: "Premium", hint: "Luxury" },
+];
+
+function KitList({ items, owned }: { items: ResolvedItem[]; owned: NeedId[] }) {
   const { bag } = useApp();
   const [openReasons, setOpenReasons] = useState<string | null>(null);
-  if (!kit.items.length) return <p className="text-sm text-ink-soft">Nothing extra needed — your usual routine is enough.</p>;
+  if (!items.length) return <p className="text-sm text-ink-soft">Nothing extra needed — your usual routine is enough.</p>;
   return (
     <ul className="space-y-3">
-      {kit.items.map(({ need, product }, i) => {
+      {items.map(({ need, product, coveredBy }, i) => {
+        const have = owned.includes(need.id);
         const inBag = !!product && bag.includes(product.id);
-        const showReasons = openReasons === need.id || i === 0;
+        const showReasons = !have && (openReasons === need.id || i === 0);
         return (
-          <li key={need.id} className="animate-[fadeUp_.4s_ease-out_both] rounded-xl border border-line p-4" style={{ animationDelay: `${i * 60}ms` }}>
+          <li
+            key={need.id}
+            className={`animate-[fadeUp_.4s_ease-out_both] rounded-xl border p-4 transition ${have ? "border-dashed border-sea/50 bg-sea-soft/40" : "border-line"}`}
+            style={{ animationDelay: `${i * 60}ms` }}
+          >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${TIER_STYLE[need.tier]}`}>{TIER_LABEL[need.tier]}</span>
-                <h3 className="mt-1.5 font-semibold">{need.title}</h3>
-                {need.spec && <p className="text-xs font-medium text-coral">Need: {need.spec}</p>}
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${have ? "bg-sea text-white" : TIER_STYLE[need.tier]}`}>
+                  {have ? "✓ Packed from home" : TIER_LABEL[need.tier]}
+                </span>
+                <h3 className={`mt-1.5 font-semibold ${have ? "text-ink-soft" : ""}`}>{need.title}</h3>
+                {need.spec && <p className="text-xs font-medium text-coral">{have ? "Check yours is: " : "Need: "}{need.spec}</p>}
               </div>
-              <div className="text-right">
+              <div className={`text-right ${have ? "opacity-50" : ""}`}>
                 <p className="text-xl font-bold tabular-nums leading-none">
                   <CountUp value={need.score} />
                 </p>
@@ -97,10 +113,13 @@ function KitList({ kit }: { kit: Kit }) {
                 <Stars n={need.stars} />
               </div>
             </div>
-            <div className="mt-2 h-1.5 rounded-full bg-line">
-              <div className="h-1.5 rounded-full bg-coral transition-[width] duration-700" style={{ width: `${need.score}%` }} />
-            </div>
+            {!have && (
+              <div className="mt-2 h-1.5 rounded-full bg-line">
+                <div className="h-1.5 rounded-full bg-coral transition-[width] duration-700" style={{ width: `${need.score}%` }} />
+              </div>
+            )}
             {need.reasons.length > 0 &&
+              !have &&
               (showReasons ? (
                 <ul className="mt-2 space-y-0.5 text-xs text-ink-soft">
                   {need.reasons.map((r) => (
@@ -112,10 +131,15 @@ function KitList({ kit }: { kit: Kit }) {
                   Why? ({need.reasons.length}) ▾
                 </button>
               ))}
-            {product && (
+            {product && !have && coveredBy && (
+              <p className="mt-3 rounded-lg bg-paper px-3 py-2 text-xs text-ink-soft">
+                Covered by your <b className="text-ink">{product.brand} {product.name}</b> (listed under {coveredBy.toLowerCase()}).
+              </p>
+            )}
+            {product && !have && !coveredBy && (
               <div className="mt-3 flex items-center gap-3 rounded-lg bg-paper p-2.5">
                 <Link href={`/product/${product.id}`} className="flex min-w-0 flex-1 items-center gap-3">
-                  <ProductShot product={product} size={52} />
+                  <ProductShot product={product} size={56} />
                   <div className="min-w-0">
                     <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-soft">{product.brand}</p>
                     <p className="line-clamp-2 text-sm font-medium leading-snug">{product.name}</p>
@@ -133,6 +157,10 @@ function KitList({ kit }: { kit: Kit }) {
                 </button>
               </div>
             )}
+            <label className="mt-3 flex w-fit cursor-pointer items-center gap-2 text-xs text-ink-soft">
+              <input type="checkbox" checked={have} onChange={() => toggleOwned(need.id)} className="h-3.5 w-3.5 accent-sea" />
+              I already have this
+            </label>
           </li>
         );
       })}
@@ -141,11 +169,15 @@ function KitList({ kit }: { kit: Kit }) {
 }
 
 export default function Results({ plan, climate, origin }: { plan: PlanResult; climate: Climate; origin: Climate | null }) {
+  const { budget, owned } = useApp();
   const [kitId, setKitId] = useState<Kit["id"]>("essential");
   const [done, setDone] = useState<string[]>([]);
   const kit = plan.kits.find((k) => k.id === kitId) ?? plan.kits[0];
-  const ids = kit.items.map((r) => r.product?.id).filter((x): x is string => !!x);
-
+  const items = resolveKit(kit, budget);
+  const toBuy = items.filter((r) => r.product && !r.coveredBy && !owned.includes(r.need.id));
+  const ids = toBuy.map((r) => r.product!.id);
+  const total = toBuy.reduce((t, r) => t + r.product!.estPriceUsd, 0);
+  const haveCount = items.filter((r) => owned.includes(r.need.id)).length;
   return (
     <div className="space-y-4">
       <ClimateStrip c={climate} origin={origin} shift={plan.shift} />
@@ -183,19 +215,46 @@ export default function Results({ plan, climate, origin }: { plan: PlanResult; c
             </button>
           ))}
         </div>
-        <KitList key={kitId} kit={kit} />
-        <div className="mt-4 flex items-center justify-between border-t border-line pt-4">
-          <p className="text-sm text-ink-soft">Estimated kit total</p>
-          <p className="font-display text-2xl tabular-nums">
-            $<CountUp value={kit.subtotalUsd} />
-          </p>
+        <div className="mb-4">
+          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-ink-soft">Budget</p>
+          <div role="radiogroup" aria-label="Budget" className="grid grid-cols-3 gap-1.5">
+            {BUDGETS.map((b) => (
+              <button
+                key={b.id}
+                role="radio"
+                aria-checked={budget === b.id}
+                onClick={() => setApp({ budget: b.id })}
+                className={`rounded-xl border px-2 py-2 text-center transition active:scale-95 ${budget === b.id ? "border-ink bg-ink text-paper" : "border-line bg-white hover:border-ink/40"}`}
+              >
+                <span className="block text-sm font-semibold">{b.label}</span>
+                <span className={`block text-[10px] ${budget === b.id ? "text-paper/70" : "text-ink-soft"}`}>{b.hint}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        <KitList key={`${kitId}-${budget}`} items={items} owned={owned} />
+        <div className="mt-4 border-t border-line pt-4">
+          {haveCount > 0 && (
+            <p className="mb-1 flex justify-between text-xs text-sea">
+              <span>Already packed from home</span>
+              <span className="font-semibold">{haveCount} item{haveCount === 1 ? "" : "s"}</span>
+            </p>
+          )}
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-ink-soft">
+              To buy · {toBuy.length} item{toBuy.length === 1 ? "" : "s"}
+            </p>
+            <p className="font-display text-2xl tabular-nums">
+              $<CountUp key={`${budget}-${total}`} value={total} />
+            </p>
+          </div>
         </div>
         <button
           onClick={() => addToBag(ids)}
           disabled={!ids.length}
           className="mt-3 w-full rounded-xl bg-ink py-3 text-sm font-bold text-paper transition hover:bg-ink/90 active:scale-[0.98] disabled:opacity-40"
         >
-          Add {kit.title.toLowerCase()} to bag
+          {ids.length ? `Add ${toBuy.length} item${toBuy.length === 1 ? "" : "s"} to bag` : "You're all set — nothing to buy"}
         </button>
         <p className="mt-2 text-[11px] text-ink-soft">Prices are estimates. Check the retailer for current prices.</p>
       </Card>

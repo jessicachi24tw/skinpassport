@@ -133,7 +133,7 @@ export default function Home() {
       )}
 
       <div className="space-y-4">
-        <SkinStep skin={app.skin} onSkin={onSkin} />
+        <SkinStep onSkin={onSkin} />
         <TripStep trip={trip} setTrip={setTrip} disabled={!app.skin} busy={busy} onPlan={planLive} onScenario={planScenario} activeScenario={app.scenarioId} />
         <ErrorText>{error}</ErrorText>
         <div id="plan" ref={resultsRef} className="scroll-mt-4">
