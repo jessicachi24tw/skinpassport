@@ -72,6 +72,11 @@ export default function Bag() {
               <p className="font-display text-2xl tabular-nums">${total}</p>
             </div>
             <p className="mt-1 text-[11px] text-ink-soft">Each Buy button opens the retailer. Prices are estimates.</p>
+            {items.length > 0 && (
+              <Link href="/plan" onClick={() => setOpen(false)} className="mt-4 block rounded-xl bg-coral py-3 text-center text-sm font-bold text-white hover:bg-coral/90">
+                Create my action plan →
+              </Link>
+            )}
           </div>
         </div>
       )}

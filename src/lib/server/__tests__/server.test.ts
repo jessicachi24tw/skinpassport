@@ -41,3 +41,25 @@ describe("PM2.5 to US AQI", () => {
     expect(pm25ToUsAqi(55.4)).toBe(150);
   });
 });
+
+describe("clear-sky UV estimate", () => {
+  it("is high near the equator and low in a northern winter", async () => {
+    const { estimateClearSkyUv } = await import("../weather");
+    expect(estimateClearSkyUv(25.8, "2026-07-15")).toBeGreaterThan(10); // Miami, July
+    expect(estimateClearSkyUv(40.7, "2027-01-15")).toBeLessThan(3); // New York, January
+  });
+});
+
+describe("shelf guessing", () => {
+  it("detects category, SPF and sun-sensitizing actives from a name", async () => {
+    const { fromText, guessNeeds } = await import("../../shelf");
+    expect(guessNeeds("Anthelios Melt-in Milk Sunscreen SPF 60")).toEqual(["sunscreen"]);
+    expect(guessNeeds("Hydrating Facial Cleanser")).toEqual(["gentle_cleanser"]);
+    expect(guessNeeds("Lip Sleeping Mask")).toEqual(["lip_care"]);
+    const p = fromText("Retinol Serum 0.3", "Brand");
+    expect(p.photosensitizing).toBe(true);
+    expect(p.needs).toEqual([]); // a treatment, not a hydrating serum
+    expect(p.treatment).toBe(true);
+    expect(fromText("UV Clear SPF 46", "EltaMD").spf).toBe(46);
+  });
+});

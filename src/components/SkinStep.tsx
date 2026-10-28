@@ -22,8 +22,8 @@ async function toJpegDataUrl(file: File, maxSide = 1600): Promise<string> {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const MIN_SCAN_MS = 5200; // demo/mock results arrive instantly; keep the scan readable
 
-export default function SkinStep({ onSkin }: { onSkin: (s: SkinProfile) => void }) {
-  const { skin, photo, photoMirrored } = useApp();
+export default function SkinStep({ onSkin, onNext }: { onSkin: (s: SkinProfile) => void; onNext: () => void }) {
+  const { skin, photo, photoMirrored, climate, originClimate, trip } = useApp();
   const fileRef = useRef<HTMLInputElement>(null);
   const [camera, setCamera] = useState(false);
   const [scan, setScan] = useState<{ photo: string | null; mirrored: boolean; stage: ScanStage } | null>(null);
@@ -80,7 +80,7 @@ export default function SkinStep({ onSkin }: { onSkin: (s: SkinProfile) => void 
 
   return (
     <Card>
-      <StepTitle n={1} title="Scan your skin" hint="Take a selfie now in daylight, without makeup, to see today's skin condition." />
+      <StepTitle n={2} title="Scan your skin" hint="Take a selfie now in daylight, without makeup, to see today's skin condition." />
       <input ref={fileRef} type="file" accept="image/jpeg,image/png" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} />
 
       {scan ? (
@@ -116,7 +116,14 @@ export default function SkinStep({ onSkin }: { onSkin: (s: SkinProfile) => void 
       )}
       <ErrorText>{error}</ErrorText>
 
-      {skin && !scan && <ScanResult key={`${skin.overall}-${photo?.length ?? 0}`} skin={skin} photo={photo} mirrored={photoMirrored} />}
+      {skin && !scan && (
+        <>
+          <ScanResult key={`${skin.overall}-${photo?.length ?? 0}`} skin={skin} photo={photo} mirrored={photoMirrored} climate={climate} origin={originClimate} trip={trip} />
+          <Button onClick={onNext} variant="coral" className="mt-4 w-full py-3">
+            Continue →
+          </Button>
+        </>
+      )}
 
       {camera && (
         <CameraCapture

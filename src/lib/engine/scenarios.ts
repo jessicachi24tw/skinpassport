@@ -14,6 +14,7 @@ export const DEMO_SKIN: SkinProfile = {
 export const DEMO_ORIGIN_CLIMATE: Climate = {
   locationName: "Taipei",
   source: "demo",
+  basis: "forecast",
   tempMinC: 21,
   tempMaxC: 27,
   humidityPct: 76,

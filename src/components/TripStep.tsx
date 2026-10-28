@@ -13,6 +13,16 @@ export const localToday = () => {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 };
 
+export const addDaysIso = (iso: string, n: number) => {
+  const d = new Date(`${iso}T12:00:00`);
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+
+/** Whole days from today to a date (local time). */
+export const daysFromToday = (iso: string) =>
+  Math.round((new Date(`${iso}T12:00:00`).getTime() - new Date(`${localToday()}T12:00:00`).getTime()) / 86400000);
+
 const noopSubscribe = () => () => {};
 /** Today's date on the client, "" during server prerender (avoids a stale build-time date). */
 export const useToday = () => useSyncExternalStore(noopSubscribe, localToday, () => "");
@@ -160,7 +170,7 @@ export default function TripStep({
 
   return (
     <Card className={disabled ? "opacity-60" : ""}>
-      <StepTitle n={2} title="Where are you going?" hint={disabled ? "Scan your skin first." : "Route first, then dates, transport and activities."} />
+      <StepTitle n={1} title="Where are you going?" hint="Route first, then dates, transport and activities." />
 
       <div className="space-y-4">
         <Section title="Route">
@@ -194,12 +204,26 @@ export default function TripStep({
         </Section>
 
         <Section title="Dates" hint={trip.startDate ? `${fmt(trip.startDate)} → ${fmt(trip.startDate, trip.days - 1)}` : undefined}>
+          {trip.startDate && today && (
+            <p className="mb-2 text-[11px] text-ink-soft">
+              {daysFromToday(trip.startDate) + trip.days > 16 ? (
+                <>
+                  More than 16 days out — we&apos;ll use <b>last year&apos;s weather for these dates</b> (“Typical for these dates”).
+                </>
+              ) : (
+                <>
+                  Within 16 days — we&apos;ll use the <b>live weather forecast</b>.
+                </>
+              )}
+            </p>
+          )}
           <div className="grid grid-cols-[1fr_auto] gap-2">
             <input
               type="date"
               aria-label="Start date"
               className="w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm outline-none focus:border-ink"
               min={today || undefined}
+              max={today ? addDaysIso(today, 365) : undefined}
               value={trip.startDate}
               disabled={disabled}
               onChange={(e) => setTrip({ startDate: e.target.value })}
@@ -250,12 +274,13 @@ export default function TripStep({
       </div>
 
       <Button onClick={submit} disabled={disabled || busy} className="mt-4 w-full py-3" variant="coral">
-        {busy ? "Building your plan…" : "Build my travel skin plan"}
+        {busy ? "Checking the weather…" : "Continue to skin scan →"}
       </Button>
       <ErrorText>{error}</ErrorText>
 
       <div className="mt-5 border-t border-line pt-4">
         <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-soft">Or try a demo destination</p>
+        <p className="-mt-1 mb-2 text-[11px] text-ink-soft">Fixed sample weather, great for a quick demo.</p>
         <div className="grid grid-cols-3 gap-2">
           {SCENARIOS.map((s) => (
             <button

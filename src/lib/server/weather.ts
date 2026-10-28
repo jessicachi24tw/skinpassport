@@ -131,29 +131,92 @@ async function openWeather(place: Coords, dates: string[], key: string): Promise
   };
 }
 
+/** Clear-sky noon UV index from latitude and date (used when history has no UV). */
+export function estimateClearSkyUv(lat: number, isoDate: string) {
+  const d = new Date(`${isoDate}T12:00:00Z`);
+  const start = Date.UTC(d.getUTCFullYear(), 0, 0);
+  const doy = Math.floor((d.getTime() - start) / 86400000);
+  const decl = 23.44 * Math.sin(((2 * Math.PI) / 365) * (doy - 81));
+  const zenith = Math.abs(lat - decl);
+  if (zenith >= 90) return 0;
+  return Math.max(0, 12.5 * Math.pow(Math.cos((zenith * Math.PI) / 180), 2.42));
+}
+
+/** Same calendar dates last year, from the Open-Meteo historical archive. */
+async function typical(place: Coords, dates: string[]): Promise<Omit<Climate, "locationName" | "source">> {
+  const shift = (iso: string) => {
+    const d = new Date(`${iso}T00:00:00Z`);
+    d.setUTCFullYear(d.getUTCFullYear() - 1);
+    return d.toISOString().slice(0, 10);
+  };
+  const start = shift(dates[0]);
+  const end = shift(dates[dates.length - 1]);
+  const base = `latitude=${place.lat}&longitude=${place.lon}&start_date=${start}&end_date=${end}&timezone=auto`;
+  const wx = await getJson(`https://archive-api.open-meteo.com/v1/archive?${base}&daily=temperature_2m_max,temperature_2m_min&hourly=relative_humidity_2m`);
+  const tMax = nums(wx?.daily?.temperature_2m_max);
+  const tMin = nums(wx?.daily?.temperature_2m_min);
+  const rh = nums(wx?.hourly?.relative_humidity_2m);
+  if (!tMax.length || !tMin.length) throw new Error("No climate history for those dates.");
+
+  // UV: try the archive; if it isn't available there, estimate clear-sky UV and mark it.
+  let uvMax: number | null = null;
+  try {
+    const uv = nums((await getJson(`https://archive-api.open-meteo.com/v1/archive?${base}&daily=uv_index_max`))?.daily?.uv_index_max);
+    if (uv.length) uvMax = Math.max(...uv);
+  } catch {
+    uvMax = null;
+  }
+  const uvEstimated = uvMax == null;
+  if (uvMax == null) uvMax = Math.max(...dates.map((d) => estimateClearSkyUv(place.lat, d)));
+
+  let aqiMax: number | null = null;
+  try {
+    const aq = await getJson(`https://air-quality-api.open-meteo.com/v1/air-quality?${base}&hourly=us_aqi`);
+    const us = nums(aq?.hourly?.us_aqi);
+    if (us.length) aqiMax = Math.max(...us);
+  } catch {
+    aqiMax = null;
+  }
+  return {
+    tempMinC: round(Math.min(...tMin)),
+    tempMaxC: round(Math.max(...tMax)),
+    humidityPct: Math.round(avg(rh)),
+    uvMax: round(uvMax),
+    aqiMax,
+    basis: "typical",
+    uvEstimated,
+  };
+}
+
 const isoToday = () => new Date().toISOString().slice(0, 10);
 
-/** Climate at `place` for the trip window (start date + days). */
-export async function getTripClimate(place: Coords, startDate: string, days: number): Promise<Climate> {
+export const daysUntil = (startDate: string) => {
   const today = new Date(isoToday() + "T00:00:00Z");
   const start = new Date(`${startDate}T00:00:00Z`);
-  const offset = Math.round((start.getTime() - today.getTime()) / 86400000);
+  return Math.round((start.getTime() - today.getTime()) / 86400000);
+};
+
+/**
+ * Climate at `place` for the trip window (start date + days).
+ * Within 16 days: live forecast. Further out: last year's weather for the same dates.
+ */
+export async function getTripClimate(place: Coords, startDate: string, days: number): Promise<Climate> {
+  const offset = daysUntil(startDate);
   if (Number.isNaN(offset)) throw new Error("Invalid start date.");
   if (offset < 0) throw new Error("The trip start date is in the past.");
-  if (offset >= FORECAST_HORIZON_DAYS) {
-    throw new Error(`Forecasts only reach ${FORECAST_HORIZON_DAYS} days ahead. Pick closer dates or try a demo destination.`);
+  if (offset + days > FORECAST_HORIZON_DAYS) {
+    return { locationName: place.name, source: "open-meteo", ...(await typical(place, dateRange(startDate, days))) };
   }
-  const span = Math.max(1, Math.min(days, FORECAST_HORIZON_DAYS - offset));
-  const dates = dateRange(startDate, span);
+  const dates = dateRange(startDate, days);
   const key = process.env.OPENWEATHER_API_KEY;
   if (key) {
     try {
-      return { locationName: place.name, source: "openweather", ...(await openWeather(place, dates, key)) };
+      return { locationName: place.name, source: "openweather", basis: "forecast", ...(await openWeather(place, dates, key)) };
     } catch {
       // OpenWeather's free forecast only covers 5 days — fall back to Open-Meteo.
     }
   }
-  return { locationName: place.name, source: "open-meteo", ...(await openMeteo(place, dates[0], dates[dates.length - 1])) };
+  return { locationName: place.name, source: "open-meteo", basis: "forecast", ...(await openMeteo(place, dates[0], dates[dates.length - 1])) };
 }
 
 /** Climate at home right now (today + next 2 days), used for the temperature-shift comparison. */

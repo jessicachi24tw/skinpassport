@@ -8,6 +8,9 @@ const clamp = (n: number, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, n));
 const has = (list: Activity[], ...xs: Activity[]) => xs.some((x) => list.includes(x));
 
 /** Activities with long hours outside. */
+/** Brightening actives (vitamin C, tranexamic acid, Melasyl…) need about 4 weeks to show results. */
+export const LONG_TERM_MIN_DAYS = 21;
+
 export const isOutdoorish = (a: Activity[]) => has(a, "beach", "pool", "ski", "hiking", "festival");
 
 /** Turn YouCam "health" scores (higher = better) into concern levels (higher = worse). */
@@ -177,7 +180,13 @@ export function computeNeeds(skin: SkinScores, climate: Climate, trip: TripConte
     ],
   );
 
-  add("brightening", k.spots * 0.5 + f.uv * 0.35, [k.spots >= 30 && `Dark spot score ${skin.age_spot}/100`, f.uv >= 60 && "Strong sun can deepen pigmentation"]);
+  // Long-term brightening only makes sense when there is time for it to work before the trip.
+  const tooSoon = trip.daysUntil != null && trip.daysUntil < LONG_TERM_MIN_DAYS;
+  add("brightening", tooSoon ? Math.min(20, k.spots * 0.2) : k.spots * 0.5 + f.uv * 0.35, [
+    k.spots >= 30 && `Dark spot score ${skin.age_spot}/100`,
+    f.uv >= 60 && "Strong sun can deepen pigmentation",
+    !tooSoon && trip.daysUntil != null && `${trip.daysUntil} days is enough time to start a brightening routine`,
+  ]);
 
   add("after_sun", outdoorish ? f.uv * 0.7 + f.hot * 0.2 + k.sensitivity * 0.1 : f.uv * 0.3, [
     outdoorish && f.uv >= 50 && "Lots of sun exposure planned",
@@ -201,33 +210,4 @@ export function computeNeeds(skin: SkinScores, climate: Climate, trip: TripConte
   ]);
 
   return needs.sort((a, b) => b.score - a.score);
-}
-
-/** Pre-trip prep (from today until departure) and on-trip habits. */
-export function buildRoutine(skin: SkinScores, climate: Climate, trip: TripContext, daysUntilTrip: number, origin: Climate | null = null) {
-  const k = concernLevels(skin);
-  const f = climateFactors(climate, trip.activities);
-  const shift = climateShift(origin, climate);
-  const sh = shiftFactors(shift);
-  const preTrip: string[] = [];
-  const duringTrip: string[] = [];
-  const window = daysUntilTrip > 0 ? `the ${daysUntilTrip} day${daysUntilTrip === 1 ? "" : "s"} before you leave` : "the days before you leave";
-
-  if (k.dryness >= 40) preTrip.push(`Hydration boost for ${window}: hydrating serum morning and night, sealed with a moisturizer.`);
-  if (k.dryness >= 55) preTrip.push("Use a hydrating sheet mask every other night to rebuild moisture.");
-  if (shift && (sh.colder >= 40 || sh.drier >= 40)) preTrip.push(`Your destination is ${describeShift(shift)} — switch to a richer night cream 2–3 days early.`);
-  if (k.sensitivity >= 40) preTrip.push("Pause strong actives (retinol, exfoliating acids) 3 days before departure to calm the barrier.");
-  if (k.spots >= 30 && f.uv >= 60) preTrip.push("Start a vitamin C serum in the morning now so it is working before the strong sun.");
-  preTrip.push("Patch-test any new product for 48 hours before the trip, not on day one of the trip.");
-
-  if (trip.transport.includes("plane")) duringTrip.push("On the flight: skip makeup, apply serum + cream, mist every 2–3 hours, drink water.");
-  else if (trip.transport.some((t) => t === "train" || t === "bus" || t === "car")) duringTrip.push("On long rides: keep a mist and lip balm in your bag; air-con dries skin.");
-  if (f.uv >= 50) duringTrip.push(`Reapply sunscreen every 2 hours outdoors (UV up to ${f.effectiveUv.toFixed(0)}).`);
-  else duringTrip.push("Apply sunscreen every morning even when it is cloudy.");
-  if (f.cold >= 40 || f.dryAir >= 40) duringTrip.push("Use a richer night cream and keep lip balm in your pocket.");
-  if (f.hot >= 40 && f.humid >= 40) duringTrip.push("Use a light gel moisturizer during the day; keep rich cream for after-sun nights.");
-  if (f.pollution >= 30) duringTrip.push("Double-cleanse in the evening to remove pollution and sunscreen.");
-  if (trip.activities.includes("pool")) duringTrip.push("Rinse off chlorine right after swimming and re-moisturize.");
-
-  return { preTrip, duringTrip };
 }

@@ -1,1 +1,32 @@
-{}
+{
+  "cerave-am-30": {
+    "src": "/products/cerave-am-30.png",
+    "code": "0793379245584",
+    "sourceUrl": "https://world.openbeautyfacts.org/product/0793379245584",
+    "matchedName": "CeraVe AM Facial Moisturizing Lotion SPF 30"
+  },
+  "kiehls-ufc": {
+    "src": "/products/kiehls-ufc.png",
+    "code": "3605975028799",
+    "sourceUrl": "https://world.openbeautyfacts.org/product/3605975028799",
+    "matchedName": "Kiehl's Ultra Facial Cream"
+  },
+  "vichy-mineral-89": {
+    "src": "/products/vichy-mineral-89.png",
+    "code": "3337875543248",
+    "sourceUrl": "https://world.openbeautyfacts.org/product/3337875543248",
+    "matchedName": "Vichy Mineral 89"
+  },
+  "cerave-hydrating-cleanser": {
+    "src": "/products/cerave-hydrating-cleanser.png",
+    "code": "3606000537675",
+    "sourceUrl": "https://world.openbeautyfacts.org/product/3606000537675",
+    "matchedName": "CeraVe Hydrating Facial Cleanser"
+  },
+  "lrp-toleriane-cleanser": {
+    "src": "/products/lrp-toleriane-cleanser.png",
+    "code": "3337875545778",
+    "sourceUrl": "https://world.openbeautyfacts.org/product/3337875545778",
+    "matchedName": "La Roche-Posay Toleriane Hydrating Gentle Cleanser"
+  }
+}

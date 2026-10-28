@@ -61,6 +61,8 @@ export interface TripContext {
   activities: Activity[];
   transport: Transport[];
   days: number;
+  /** Days from today to departure (unknown for demo scenarios). */
+  daysUntil?: number;
 }
 
 /** Climate summary for a time window at one place. */
@@ -72,6 +74,9 @@ export interface Climate {
   humidityPct: number; // average relative humidity
   uvMax: number; // max daily UV index
   aqiMax: number | null; // US AQI (0–500), null if unknown
+  /** "forecast" = live forecast (trip within 16 days), "typical" = last year's weather for the same dates. */
+  basis?: "forecast" | "typical";
+  uvEstimated?: boolean; // UV estimated from latitude/date (no UV in the history)
 }
 
 export type NeedId =
@@ -109,9 +114,41 @@ export interface ProductImage {
   sourceUrl: string; // Open Beauty Facts product page (CC BY-SA 3.0)
 }
 
+/** Ingredients we can explain (only listed when verified in the product's INCI list). */
+export type IngredientId =
+  | "hyaluronic_acid"
+  | "ceramides"
+  | "glycerin"
+  | "squalane"
+  | "panthenol"
+  | "centella"
+  | "niacinamide"
+  | "vitamin_c"
+  | "tranexamic_acid"
+  | "kojic_acid"
+  | "melasyl"
+  | "vitamin_e"
+  | "ferulic_acid"
+  | "shea_butter"
+  | "petrolatum"
+  | "cholesterol"
+  | "glacial_glycoprotein"
+  | "peptides"
+  | "salicylic_acid"
+  | "lha"
+  | "retinoid"
+  | "zinc_oxide"
+  | "uv_filters"
+  | "cucumber"
+  | "aloe"
+  | "thermal_water"
+  | "bisabolol";
+
 export interface Product {
   id: string;
   brand: string;
+  /** Part of the L'Oréal Groupe portfolio. */
+  loreal: boolean;
   name: string;
   tier: BudgetTier;
   needs: NeedId[];
@@ -120,24 +157,54 @@ export interface Product {
   waterResistant?: boolean;
   sensitiveFriendly?: boolean;
   texture?: Texture;
+  fragranceFree: boolean;
+  /** Needs ~4 weeks of daily use to show results (e.g. brightening serums). */
+  longTerm?: boolean;
+  /** Best used in the morning / at night. */
+  when?: "am" | "pm" | "both";
   tagline: string;
   description: string;
-  keyIngredients: string[];
+  ingredients: IngredientId[]; // verified against the INCI list
+  ingredientSource: string; // where the INCI list was checked
   howToUse: string;
   url: string;
   image: ProductImage | null;
+}
+
+/** A product the user already owns (Step 3). */
+export interface OwnedProduct {
+  id: string;
+  name: string;
+  brand: string;
+  needs: NeedId[];
+  spf?: number;
+  waterResistant?: boolean;
+  ingredients?: IngredientId[];
+  /** Flags parsed from an ingredient list, e.g. a retinoid or exfoliating acid. */
+  photosensitizing?: boolean;
+  /** A treatment (retinol, acids…) rather than one of the trip categories. */
+  treatment?: boolean;
+  source: "catalog" | "openbeautyfacts" | "manual";
+  catalogId?: string;
+}
+
+export type Band = "weak" | "normal" | "strong";
+export type RiskLevel = "low" | "medium" | "high";
+export interface ConcernReport {
+  key: "moisture" | "oiliness" | "redness" | "age_spot";
+  label: string;
+  score: number;
+  band: Band;
+  risk: RiskLevel;
+  riskReason: string;
 }
 
 export interface Recommendation {
   need: Need;
   /** Best product for each budget tier (falls back to the nearest tier). */
   options: Record<BudgetTier, Product | null>;
-}
-
-export interface Kit {
-  id: "essential" | "complete";
-  title: string;
-  items: Recommendation[];
+  /** Owned products that already cover this need, with a spec check. */
+  owned: { product: OwnedProduct; meetsSpec: boolean; note?: string }[];
 }
 
 /** How the destination differs from home. */
@@ -150,10 +217,11 @@ export interface ClimateShift {
 
 export interface PlanResult {
   needs: Need[];
-  kits: Kit[];
-  preTrip: string[];
-  duringTrip: string[];
+  items: Recommendation[]; // sorted by necessity, "skip" removed
   shift: ClimateShift | null;
-  coachNote: string;
-  coachSource: "llm" | "template";
+  report: ConcernReport[];
+  /** Markdown-light bullets: **bold** is the only markup. */
+  summary: string[];
+  summarySource: "llm" | "template";
+  warnings: string[]; // e.g. retinoid + strong sun
 }

@@ -10,6 +10,8 @@ export interface PickContext {
   sensitive: boolean;
   effectiveUv: number;
   activities: Parameters<typeof sunscreenSpec>[1];
+  /** Brands the user already uses (Step 3) — similar products are preferred. */
+  preferredBrands?: string[];
 }
 
 export interface ShopProvider {
@@ -31,6 +33,9 @@ export function fitScore(p: Product, need: Need, ctx: PickContext): number {
     s += spec.minSpf >= 50 ? Math.min(2, extra / 5) : -extra / 15;
   }
   if (ctx.sensitive && p.sensitiveFriendly) s += 3;
+  if (ctx.sensitive && p.fragranceFree) s += 1;
+  if (ctx.preferredBrands?.some((b) => b.toLowerCase() === p.brand.toLowerCase())) s += 4;
+  if (p.loreal) s += 0.5; // L'Oréal Groupe partner catalog first
   if (p.needs[0] === need.id) s += 2; // primary purpose beats multi-use
   s -= p.estPriceUsd / 100; // within a tier, gently prefer the cheaper item
   return s;

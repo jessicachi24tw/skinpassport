@@ -1,10 +1,10 @@
 import "server-only";
 // Optional LLM layer (Anthropic Claude). The rule engine decides WHAT to recommend;
-// the LLM only writes a short, friendly coach note that explains it.
-// Without ANTHROPIC_API_KEY a template note is used instead.
+// the LLM only rewrites the summary bullets in a friendlier voice.
+// Without ANTHROPIC_API_KEY the template bullets are used instead.
 
 import { describeShift } from "../engine/necessity";
-import type { Climate, ClimateShift, Need, SkinScores, TripContext } from "../types";
+import type { Climate, ClimateShift, ConcernReport, Need, TripContext } from "../types";
 
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-haiku-5-5";
 
@@ -27,37 +27,32 @@ async function ask(system: string, user: string, maxTokens = 400): Promise<strin
   return (data?.content ?? []).map((c: { text?: string }) => c.text ?? "").join("").trim();
 }
 
-export function templateCoachNote(skin: SkinScores, climate: Climate, must: Need[], shift: ClimateShift | null): string {
-  const items = must.map((n) => n.title.toLowerCase());
-  const list = items.length ? items.join(", ") : "your usual routine";
-  const skinLine = skin.moisture < 50 ? "Your skin is low on moisture right now" : skin.redness < 50 ? "Your skin is showing some sensitivity" : "Your skin is in good shape";
-  const shiftLine = shift ? ` — ${describeShift(shift)}` : "";
-  return `${skinLine}, and ${climate.locationName} will bring ${climate.tempMinC}–${climate.tempMaxC}°C, ${climate.humidityPct}% humidity and UV up to ${climate.uvMax}${shiftLine}. Pack ${list} first — those carry the highest necessity scores for this trip.`;
-}
-
-export async function coachNote(
-  skin: SkinScores,
-  climate: Climate,
-  trip: TripContext & { notes?: string },
-  needs: Need[],
-  shift: ClimateShift | null,
-): Promise<{ text: string; source: "llm" | "template" }> {
-  const must = needs.filter((n) => n.tier === "must");
-  const fallback = templateCoachNote(skin, climate, must, shift);
-  if (!hasLlm()) return { text: fallback, source: "template" };
+/** Claude rewrites the summary as 3–5 bullets with **bold** key facts; falls back to the template. */
+export async function summaryBullets(
+  facts: { report: ConcernReport[]; climate: Climate; shift: ClimateShift | null; trip: TripContext & { notes?: string }; needs: Need[] },
+  fallback: string[],
+): Promise<{ bullets: string[]; source: "llm" | "template" }> {
+  if (!hasLlm()) return { bullets: fallback, source: "template" };
   try {
     const text = await ask(
-      "You are SkinPassport, a friendly travel skincare coach. Write 2–3 short sentences in English. Explain why the top items matter for this person's skin, the climate change from home and their plans. If the special notes mention something relevant (an outdoor event, a long flight), mention it. Use only the facts given. Do not invent products. No medical advice.",
+      "You are SkinPassport, a travel skincare coach. Write 3 to 5 bullets in English, each one line, each starting with '- '. Wrap the key fact of each bullet in **double asterisks** (scores, bands, weather numbers, product categories). Cover: skin today, destination climate (and change from home), the biggest risk, what to pack first, and one tip from the user's notes if relevant. Use only the facts given. No product brand names, no medical claims.",
       JSON.stringify({
-        skinScores_higherIsHealthier: skin,
-        destination: climate,
-        changeFromHome: shift ? describeShift(shift) : null,
-        trip: { days: trip.days, activities: trip.activities, transport: trip.transport, specialNotes: (trip.notes ?? "").slice(0, 400) },
-        topNeeds: needs.slice(0, 4).map((n) => ({ item: n.title, necessity: n.score, reasons: n.reasons })),
+        skin: facts.report.map((r) => ({ concern: r.label, score: r.score, band: r.band, tripRisk: r.risk, why: r.riskReason })),
+        destination: facts.climate,
+        changeFromHome: facts.shift ? describeShift(facts.shift) : null,
+        trip: { days: facts.trip.days, activities: facts.trip.activities, transport: facts.trip.transport, daysUntilDeparture: facts.trip.daysUntil, notes: (facts.trip.notes ?? "").slice(0, 400) },
+        priorities: facts.needs.filter((n) => n.tier !== "skip").slice(0, 5).map((n) => ({ item: n.title, necessity: n.score, tag: n.tier })),
       }),
+      400,
     );
-    return text ? { text, source: "llm" } : { text: fallback, source: "template" };
+    const bullets = text
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.startsWith("- "))
+      .map((l) => l.slice(2).trim())
+      .slice(0, 5);
+    return bullets.length >= 2 ? { bullets, source: "llm" } : { bullets: fallback, source: "template" };
   } catch {
-    return { text: fallback, source: "template" };
+    return { bullets: fallback, source: "template" };
   }
 }

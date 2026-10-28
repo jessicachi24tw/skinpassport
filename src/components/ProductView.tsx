@@ -1,34 +1,42 @@
 "use client";
 
 import Link from "next/link";
+import { INGREDIENTS } from "@/lib/engine/ingredients";
 import { NEED_TITLES } from "@/lib/engine/necessity";
+import { productCautions, productReasons } from "@/lib/engine/reasons";
 import { toggleBag, useApp } from "@/lib/store";
 import type { Product } from "@/lib/types";
 import Bag from "./Bag";
 import ProductShot from "./ProductShot";
 import { TIER_LABEL } from "./Results";
-import { Card, Stars } from "./ui";
+import { Card, Rich, Stars } from "./ui";
 
 export default function ProductView({ product, alternatives }: { product: Product; alternatives: Product[] }) {
-  const { plan, climate, bag, budget } = useApp();
+  const { plan, climate, bag, budget, trip } = useApp();
   const inBag = bag.includes(product.id);
-  // Find why this product is in the user's plan (if it is).
-  const complete = plan?.kits.find((k) => k.id === "complete");
+  // Find why this product is in the user's plan (if it is), or which of the user's needs it covers.
   const rec =
-    complete?.items.find((r) => r.options[budget]?.id === product.id) ??
-    complete?.items.find((r) => Object.values(r.options).some((o) => o?.id === product.id)) ??
+    plan?.items.find((r) => r.options[budget]?.id === product.id) ??
+    plan?.items.find((r) => Object.values(r.options).some((o) => o?.id === product.id)) ??
+    plan?.items.find((r) => product.needs.includes(r.need.id)) ??
     null;
+  const ctx = { activities: trip.activities, transport: trip.transport, days: trip.days };
+  const reasons = rec && plan && climate ? productReasons(product, rec.need, plan.report, climate, ctx, 5) : [];
+  const cautions = climate ? productCautions(product, climate, ctx) : [];
   const facts: [string, string][] = [
     ["Best for", product.needs.map((n) => NEED_TITLES[n]).join(", ")],
     ["Price range", { value: "Value · drugstore", balanced: "Balanced · mid-range", premium: "Premium · luxury" }[product.tier]],
     ["Texture", product.texture ? product.texture[0].toUpperCase() + product.texture.slice(1) : "—"],
     ...(product.spf ? ([["Sun protection", `SPF ${product.spf}${product.waterResistant ? " · water-resistant" : ""}`]] as [string, string][]) : []),
+    ["Fragrance", product.fragranceFree ? "Fragrance-free" : "Contains fragrance"],
     ["Sensitive skin", product.sensitiveFriendly ? "Suitable" : "Patch-test first"],
+    ...(product.longTerm ? ([["Time to see results", "About 4 weeks of daily use"]] as [string, string][]) : []),
+    ["Group", product.loreal ? "L'Oréal Groupe" : "Other brand"],
   ];
 
   return (
     <main className="mx-auto max-w-md px-4 pb-28 pt-4">
-      <Link href="/#plan" className="mb-3 inline-flex items-center gap-1 text-sm font-semibold text-ink-soft hover:text-ink">
+      <Link href="/" className="mb-3 inline-flex items-center gap-1 text-sm font-semibold text-ink-soft hover:text-ink">
         ‹ Back to my plan
       </Link>
 
@@ -85,11 +93,21 @@ export default function ProductView({ product, alternatives }: { product: Produc
             </div>
           </div>
           {rec.need.spec && <p className="mt-2 text-xs font-medium text-coral">You need: {rec.need.spec}</p>}
-          <ul className="mt-2 space-y-0.5 text-sm text-ink-soft">
-            {rec.need.reasons.map((r) => (
-              <li key={r}>• {r}</li>
+          <ul className="mt-2 space-y-1.5 text-sm leading-relaxed text-ink-soft">
+            {(reasons.length ? reasons : rec.need.reasons).map((r) => (
+              <li key={r} className="flex gap-1.5">
+                <span aria-hidden>•</span>
+                <span>
+                  <Rich text={r} />
+                </span>
+              </li>
             ))}
           </ul>
+          {cautions.map((c) => (
+            <p key={c} className="mt-2 text-xs text-[#8a5d10]">
+              ⚠︎ {c}
+            </p>
+          ))}
         </Card>
       )}
 
@@ -108,13 +126,24 @@ export default function ProductView({ product, alternatives }: { product: Produc
 
       <Card className="mt-4">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-soft">Key ingredients</h2>
-        <div className="mt-2 flex flex-wrap gap-2">
-          {product.keyIngredients.map((k) => (
-            <span key={k} className="rounded-full bg-sea-soft px-3 py-1 text-xs font-medium text-sea">
-              {k}
-            </span>
-          ))}
-        </div>
+        <ul className="mt-2 space-y-2">
+          {product.ingredients.map((id) => {
+            const info = INGREDIENTS[id];
+            const first = Object.values(info.helps)[0]?.replace(/^(is|are) /, "");
+            return (
+              <li key={id} className="flex items-start gap-2 text-sm">
+                <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${info.trending ? "bg-sea text-white" : "bg-sea-soft text-sea"}`}>{info.label}</span>
+                <span className="text-ink-soft">{info.caution ?? (first ? first[0].toUpperCase() + first.slice(1) : "")}</span>
+              </li>
+            );
+          })}
+        </ul>
+        <p className="mt-2 text-[11px] text-ink-soft">
+          Checked against the published ingredient list ·{" "}
+          <a href={product.ingredientSource} target="_blank" rel="noopener noreferrer" className="underline">
+            source
+          </a>
+        </p>
         <h2 className="mt-5 text-xs font-semibold uppercase tracking-wider text-ink-soft">How to use</h2>
         <p className="mt-2 text-sm leading-relaxed">{product.howToUse}</p>
         <p className="mt-4 rounded-lg bg-paper px-3 py-2 text-xs text-ink-soft">✈️ Carry-on tip: liquids must be 100 ml (3.4 oz) or less per container. Decant larger sizes into travel bottles.</p>

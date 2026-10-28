@@ -76,3 +76,23 @@ export function Stars({ n }: { n: number }) {
 export function ErrorText({ children }: { children: ReactNode }) {
   return children ? <p className="mt-3 rounded-lg bg-coral-soft px-3 py-2 text-sm text-coral">{children}</p> : null;
 }
+
+/** Renders text where **double asterisks** mark bold. */
+export function Rich({ text }: { text: string }) {
+  return (
+    <>
+      {text
+        .split(/(\*\*[^*]+\*\*)/g)
+        .filter(Boolean)
+        .map((t, i) =>
+          t.startsWith("**") ? (
+            <b key={i} className="font-semibold text-ink">
+              {t.slice(2, -2)}
+            </b>
+          ) : (
+            <span key={i}>{t}</span>
+          ),
+        )}
+    </>
+  );
+}

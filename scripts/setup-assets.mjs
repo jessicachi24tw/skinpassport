@@ -96,7 +96,11 @@ function matchScore(seed, hit) {
   const got = new Set(words(`${hit.product_name ?? ""} ${hit.brands ?? ""}`));
   let overlap = 0;
   for (const w of want) if (got.has(w)) overlap++;
-  return overlap / want.size + (hit.image_front_url ? 0.2 : -1);
+  // A different product type in the name (e.g. "cleanser" when we want a cream) is a wrong match.
+  const CONFLICTS = ["cleanser", "cleansing", "foaming", "wash", "spf", "sunscreen", "serum", "cream", "mask", "toner", "spray", "gel", "lotion", "balm", "lip", "body", "night", "eye", "tinted"];
+  let penalty = 0;
+  for (const c of CONFLICTS) if (got.has(c) && !want.has(c)) penalty += 0.35;
+  return overlap / want.size - penalty + (hit.image_front_url ? 0.2 : -1);
 }
 
 async function findOnObf(seed, overrides) {
@@ -142,7 +146,7 @@ async function loadSeeds() {
   // The catalog is TypeScript; read the seed entries out of it without a TS toolchain.
   const src = await readFile(path.join(ROOT, "src/lib/shop/catalog.ts"), "utf8");
   const seeds = [];
-  const re = /\{\s*id: "([^"]+)", brand: "([^"]+)", name: "([^"]+)"[\s\S]*?obf: "([^"]+)",\s*\}/g;
+  const re = /\{\s*id: "([^"]+)", brand: "([^"]+)",[^\n]*? name: "([^"]+)"[\s\S]*?obf: "([^"]+)",\s*\}/g;
   let m;
   while ((m = re.exec(src))) seeds.push({ id: m[1], brand: m[2], name: m[3], obf: m[4] });
   return seeds;

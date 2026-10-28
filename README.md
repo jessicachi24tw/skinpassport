@@ -1,46 +1,64 @@
 # SkinPassport — Geo-Adaptive Skincare Coach
 
-**Your skin today + your destination's climate = the right travel kit.**
+**Your trip + your skin today = the right travel kit.**
 
-SkinPassport scans your skin with the **YouCam AI Skin Analysis API**, pulls the weather forecast for your trip (temperature, humidity, UV index, air quality), and turns both into:
+SkinPassport plans your trip, scans your skin with the **YouCam AI Skin Analysis API**, checks what's already on your shelf, and pulls the weather for your exact dates (temperature, humidity, UV index, air quality). It turns all of that into:
 
-- a **pre-trip routine** for the days before you leave ("your skin is dry — hydration boost this week"),
-- a **Necessity Score (0–100)** and star rating for every product category,
-- an **Essential kit** (must-pack only) and a **Complete kit**, each with a Buy now link and an estimated cart total.
+- an **InBody-style skin report**: each score in grey reference zones (Weak · Normal · Strong) plus a **trip risk** for your destination,
+- a **Necessity Score (0–100)** with a Must-pack / Recommended / Nice-to-have tag for every product category,
+- product picks from a **L'Oréal Groupe-first catalog** in three budgets, each explained through its **verified ingredients** ("Your Moisture is Weak (32) → contains Ceramides, which rebuild the skin barrier"),
+- an **action plan** (Before the trip · During the trip · Shopping list) that adapts to how many days are left and can be **saved as an image** to your phone.
 
-> Demo highlight: the same dry-skin scan produces a completely different cart for **New York in winter** (ceramide barrier cream, hydrating serum, lip repair, SPF 30) and **Miami in July** (SPF 60 water-resistant sunscreen, after-sun gel, a light gel moisturizer instead of rich cream).
+> Demo highlight: the same dry-skin scan produces a completely different plan for **New York in winter** (ceramide cream, hydrating serum, lip repair, SPF 30) and **Miami in July** (SPF 50+ water-resistant sunscreen, after-sun gel, a light gel moisturizer instead of rich cream).
 
 ![Architecture](docs/architecture.png)
 
-| Route + flight map | New York, dry winter | Miami, high UV | Product page |
+| Skin report + trip risk | Ingredient-based picks | Action plan (saved image) | Product page |
 |---|---|---|---|
+| ![Skin report](docs/screenshot-report.png) | ![Plan](docs/screenshot-plan.png) | ![Action plan](docs/screenshot-action-plan.png) | ![Product page](docs/screenshot-product.png) |
+
+---|---|---|---|
 | ![Route](docs/screenshot-route.png) | ![New York result](docs/screenshot-nyc.png) | ![Miami result](docs/screenshot-miami.png) | ![Product page](docs/screenshot-product.png) |
 
 ---
 
 ## How it works
 
-1. **Skin scan** — a passport-style scanner: the in-app camera tracks 478 face points live with **MediaPipe Face Landmarker** (in the browser), guides the user into the oval and auto-captures when they hold still. While YouCam analyzes, the photo turns into a rotating 3D face mesh with a checklist that follows the real request status. The result shows **YouCam's per-concern masks** over the photo — tap Moisture, Redness or Spots to see where YouCam found it. Uploading a photo works too. The browser crops and resizes the selfie and sends it to `/api/skin/analyze`. The server registers the file with YouCam (`POST /s2s/v2.0/file/skin-analysis`), uploads the bytes to the presigned URL, starts a task (`POST /s2s/v2.0/task/skin-analysis`) and the browser polls `/api/skin/status` until the task succeeds. We use the SD concerns `moisture, oiliness, redness, age_spot, acne, pore, texture, radiance` (scores 1–100, higher = healthier).
-2. **Trip** — in this order:
-   - **Route:** *From* and *To*, each picked **country first, then city** with type-ahead autocomplete (`/api/places`: instant local matches + live Open-Meteo geocoding). "Use my location" fills *From*. A world map animates a plane (or train, car, ship) along the great-circle route and shows distance and travel time.
-   - **Dates:** start date + number of days.
-   - **Getting there:** multi-select plane, train, car, bus, subway, ship.
-   - **Activities & special notes (optional):** multi-select tags (beach, skiing, hiking, festival…). Tapping a tag also writes it into the notes box, which the user can edit; notes are passed to the coach note.
-   `/api/weather` returns the forecast for the trip window **and the current climate at home**, so the engine can react to the change (e.g. "25°C colder and 38 pts drier than Taipei").
-3. **Advice engine** (`src/lib/engine/necessity.ts`) — a transparent rule engine converts skin scores into concern levels (dryness, oil, sensitivity, spots) and the climate into stress factors (UV with snow/water reflection, dry air, humidity, cold, heat, pollution). Each category gets a Necessity Score and a tier:
+The app is four steps on one mobile page; finished steps collapse into a summary you can edit.
 
-   | Score | Tier | Kit |
-   |---|---|---|
-   | 70–100 | Must-pack | Essential + Complete |
-   | 50–69 | Recommended | Complete |
-   | 35–49 | Nice to have | Complete |
-   | < 35 | Skip | — |
+1. **Trip** — *From* and *To* (country first, then city, with autocomplete; "Use my location"), an animated flight map, dates, transport (multi-select) and activity tags that flow into free-text notes. `/api/weather` returns:
+   - **Predicted weather** when the whole trip is within 16 days (Open-Meteo / OpenWeather forecast),
+   - **Typical for these dates** further out: last year's weather for the same dates from the Open-Meteo archive (UV is estimated from latitude and season if the archive has none, and labelled "est."),
+   - plus the **current climate at home**, so the plan can react to the change ("25°C colder and 38 pts drier than Taipei").
+2. **Skin scan** — a passport-style scanner: MediaPipe Face Landmarker tracks 478 face points live in the browser and auto-captures when the face is steady; while YouCam analyzes, the photo becomes a rotating 3D mesh with a checklist tied to the real request status. The report overlays **YouCam's per-concern masks** on the photo and shows each score InBody-style: grey zones **Weak <45 · Normal 45–69 · Strong ≥70** (SkinPassport reference ranges, not medical norms) and a **trip risk** (Low / Medium / High) that combines today's score with the destination.
+   YouCam flow: `POST /s2s/v2.0/file/skin-analysis` → upload to the presigned URL → `POST /s2s/v2.0/task/skin-analysis` → poll `GET /s2s/v2.0/task/skin-analysis/{id}`.
+3. **My shelf (optional)** — search our catalog or **Open Beauty Facts** (any brand), or add a product by name. The app guesses the type and SPF from the name and flags retinoids/acids. Owned products:
+   - cover a category ("Packed from home"), after a **spec check** (e.g. "Yours is SPF 30 — this trip needs SPF 50+, water-resistant"),
+   - make similar picks from the same brands rank higher,
+   - leave the remaining needs as the **complementary** picks,
+   - trigger warnings (retinol + strong sun → pause 3 days before, leave it at home).
+4. **Plan** — bullet summary with **bold** key facts (template, or rewritten by Claude), then one list grouped by tag. Each card shows the product for the chosen budget (Value / Balanced / Premium), trending ingredient badges, **ingredient-based reasons**, cautions, "+ Bag" and "I already have this". Nothing is pre-selected.
+5. **Action plan** (`/plan`) — built from the bag + what you have:
+   - **Before the trip** adapts to the days left (e.g. a vitamin C serum is only suggested with 3+ weeks to go; otherwise "too short — rely on sunscreen"; order-by date; patch test; pause actives),
+   - **During the trip**: travel day, every morning, every night, reminders — using your actual product names,
+   - **Shopping list**: bag items with prices + items from home without prices.
+   "Save as image" exports a phone-size PNG (share sheet on mobile → Save Image).
 
-   The engine also scores the **change from home**: big temperature drops, drier air or a UV jump raise barrier cream, hydration, lip care and sunscreen. Flights raise the face-mist score more than trains or buses. The sunscreen spec is derived from effective UV: SPF 50+ / PA++++ when UV ≥ 8, water-resistant for beach, ski and outdoor trips.
-4. **Shop provider** (`src/lib/shop/`) — picks the best-fitting product per category **for each budget tier (Value / Balanced / Premium)** (SPF requirement, water resistance, sensitive-skin friendly, price). The MVP uses a curated catalog with retailer links; the `ShopProvider` interface lets you swap in a real store API. See [docs/shop-api-survey.md](docs/shop-api-survey.md).
-   On the results, users switch budget tiers instantly and tick **"I already have this"**: the item moves to "packed from home" (with a reminder of the spec it must meet, e.g. SPF 50+ water-resistant) and drops out of the to-buy total.
-5. **Product pages** (`/product/[id]`, statically generated) — background-removed product photo from Open Beauty Facts (illustrated fallback), description, key ingredients, how to use, carry-on tip, "why it's in your plan" (score, tier and reasons from your plan), alternatives, add to bag and Buy now. A bag sheet keeps picked items and an estimated total across pages.
-6. **Coach note** — Claude writes a 2–3 sentence explanation from the engine's output. The LLM never decides what to recommend, so results are stable and explainable.
+### Engine (`src/lib/engine/`, pure and unit-tested)
+
+| File | What it does |
+|---|---|
+| `necessity.ts` | Skin concern levels × climate stress (UV with snow/water reflection, dry air, humidity, cold, heat, pollution, change from home, transport) → Necessity Score + tag; drops long-term brightening when the trip is under 3 weeks away |
+| `report.ts` | Bands (Weak/Normal/Strong) and trip risk with its main reason |
+| `ingredients.ts` | Ingredient knowledge base in cosmetic language (what each helps with, trending flag, cautions) |
+| `reasons.ts` | Matches a product's **verified** ingredients to the user's weakest scores and the destination |
+| `recommend.ts` | One pick per budget tier, owned-product spec checks, multi-use de-duplication |
+| `actionPlan.ts` | Before / During / Shopping list |
+| `summary.ts` | Template bullet summary |
+
+### Catalog (`src/lib/shop/catalog.ts`)
+
+24 products, 21 from **L'Oréal Groupe** brands (CeraVe, La Roche-Posay, Kiehl's, Vichy, SkinCeuticals, Lancôme, L'Oréal Paris, Garnier) and 3 others where L'Oréal had no fit. Every ingredient we mention was checked against the product's published INCI list (source link on each product page); brand claims such as "water-resistant 80 minutes" were checked on retailer pages. Descriptions are written in our own words. The `ShopProvider` interface lets you swap in a live store API — see [docs/shop-api-survey.md](docs/shop-api-survey.md).
 
 ## Tech stack
 
@@ -54,6 +72,7 @@ SkinPassport scans your skin with the **YouCam AI Skin Analysis API**, pulls the
 | Map | d3-geo + world-atlas (Natural Earth), animated in SVG |
 | Face scan | MediaPipe Face Landmarker (in-browser, 478 3D points) + YouCam masks |
 | Product photos | Open Beauty Facts (CC BY-SA 3.0), backgrounds removed with @imgly/background-removal-node |
+| Image export | html-to-image (action plan → PNG) |
 | Tests | Vitest (`src/lib/**/__tests__`) |
 
 ## Project structure
@@ -61,20 +80,23 @@ SkinPassport scans your skin with the **YouCam AI Skin Analysis API**, pulls the
 ```
 src/
   app/
-    page.tsx                 # mobile UI (3 steps)
+    page.tsx                 # mobile UI (Trip → Scan → Shelf → Plan)
+    plan/page.tsx            # action plan + save as image
     product/[id]/page.tsx    # product detail pages
     api/skin/analyze         # YouCam: upload + create task
     api/skin/status          # YouCam: poll task
     api/places               # country-filtered city autocomplete
     api/weather              # trip forecast, home climate, or demo scenario
-    api/plan                 # engine + kits + coach note
+    api/plan                 # engine + report + picks + summary
+    api/products/search      # catalog + Open Beauty Facts search for "My shelf"
     api/health               # which integrations are live
-  components/                # CameraCapture, LocationPicker, TripMap, Results, ProductView, Bag…
+  components/                # CameraCapture, ScanResult, ShelfStep, Results, ActionPlanView, ProductView…
   lib/
-    engine/                  # necessity.ts, kits.ts, scenarios.ts (pure, tested)
+    engine/                  # necessity, report, ingredients, reasons, recommend, actionPlan, summary
     server/                  # youcam.ts, weather.ts, llm.ts (server-only)
     shop/                    # catalog.ts, provider.ts
     places.ts                # countries + popular cities for instant autocomplete
+    shelf.ts                 # guess type / SPF / retinoids for owned products
     store.ts                 # client state shared across pages (sessionStorage)
 docs/                        # architecture, screenshots, shop API survey
 ```
@@ -98,13 +120,14 @@ Every integration has a fallback, so the app runs with **no keys at all**: demo 
 ## Limitations and next steps
 
 - Product prices are estimates; the next step is a live Shop API (Shopify Storefront or Amazon Creators API).
-- Forecasts reach 16 days ahead (5 days with OpenWeather); later trips should use climate averages.
+- Trips more than 16 days out use last year's weather; a multi-year climate average would be steadier.
 - Calendar sync (Google Calendar) to detect upcoming trips automatically.
 - Live prices from a store API.
 - YouCam Virtual Try-On for the recommended products.
 
 ## Credits
 
+- Ingredient lists checked on [Skinsort](https://skinsort.com) and retailer pages (links on each product page).
 - Product photos: [Open Beauty Facts](https://world.openbeautyfacts.org) contributors, [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/); edited (backgrounds removed). Full list in [docs/IMAGE_CREDITS.md](docs/IMAGE_CREDITS.md).
 - Map data: Natural Earth via world-atlas.
 

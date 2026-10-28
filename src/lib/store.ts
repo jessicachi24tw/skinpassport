@@ -1,38 +1,44 @@
-// Tiny client-side store shared by every page (home, product pages, bag).
+// Tiny client-side store shared by every page (home, product pages, action plan).
 // It survives navigation and page refreshes (sessionStorage) without a server.
 
 import { useSyncExternalStore } from "react";
-import type { BudgetTier, Climate, NeedId, PlanResult, SkinProfile, TripInput } from "./types";
+import type { BudgetTier, Climate, NeedId, OwnedProduct, PlanResult, SkinProfile, TripInput } from "./types";
+
+export type Step = "trip" | "scan" | "shelf" | "results";
 
 export interface AppState {
-  skin: SkinProfile | null;
+  step: Step;
   trip: TripInput;
-  originClimate: Climate | null;
-  climate: Climate | null;
-  plan: PlanResult | null;
   scenarioId: string | null;
-  bag: string[]; // product ids
+  climate: Climate | null;
+  originClimate: Climate | null;
+  skin: SkinProfile | null;
   photo: string | null; // scanned selfie (data URL), shown with YouCam masks
   photoMirrored: boolean; // camera selfies are shown mirrored
+  shelf: OwnedProduct[]; // products the user already uses (Step 3)
+  plan: PlanResult | null;
   budget: BudgetTier;
-  owned: NeedId[]; // categories the user already has at home
+  bag: string[]; // product ids the user chose to buy
+  ownedNeeds: NeedId[]; // "I already have this" ticks
 }
 
 export const INITIAL: AppState = {
-  skin: null,
+  step: "trip",
   trip: { origin: null, destination: null, startDate: "", days: 4, transport: ["plane"], activities: [], notes: "" },
-  originClimate: null,
-  climate: null,
-  plan: null,
   scenarioId: null,
-  bag: [],
+  climate: null,
+  originClimate: null,
+  skin: null,
   photo: null,
   photoMirrored: false,
+  shelf: [],
+  plan: null,
   budget: "balanced",
-  owned: [],
+  bag: [],
+  ownedNeeds: [],
 };
 
-const KEY = "skinpassport:v3";
+const KEY = "skinpassport:v4";
 let state: AppState = INITIAL;
 let loaded = false;
 const listeners = new Set<() => void>();
@@ -76,5 +82,6 @@ const getSnapshot = () => {
 export const useApp = () => useSyncExternalStore(subscribe, getSnapshot, () => INITIAL);
 
 export const toggleBag = (id: string) => setApp((s) => ({ bag: s.bag.includes(id) ? s.bag.filter((x) => x !== id) : [...s.bag, id] }));
-export const addToBag = (ids: string[]) => setApp((s) => ({ bag: Array.from(new Set([...s.bag, ...ids])) }));
-export const toggleOwned = (id: NeedId) => setApp((s) => ({ owned: s.owned.includes(id) ? s.owned.filter((x) => x !== id) : [...s.owned, id] }));
+export const toggleOwnedNeed = (id: NeedId) =>
+  setApp((s) => ({ ownedNeeds: s.ownedNeeds.includes(id) ? s.ownedNeeds.filter((x) => x !== id) : [...s.ownedNeeds, id] }));
+export const resetAll = () => setApp({ ...INITIAL });
