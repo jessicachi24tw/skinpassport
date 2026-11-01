@@ -130,7 +130,7 @@ export function PassportStamp({
               </div>
             </dl>
           </div>
-          <p className="relative mt-2.5 truncate font-mono text-[9px] tracking-[0.12em] text-ink-soft/70">{mrz}</p>
+          <p className="relative mt-2.5 truncate font-sans font-semibold text-[9px] tracking-[0.12em] text-ink-soft/70">{mrz}</p>
 
           {/* The stamp */}
           <div

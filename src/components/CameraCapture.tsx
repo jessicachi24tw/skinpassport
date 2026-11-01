@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { alignment, detect, getFaceMesh, type Landmarks, type Mesh } from "@/lib/faceMesh";
 
 type Phase = "starting" | "live" | "countdown" | "review" | "error";
@@ -14,12 +15,18 @@ function brightness(ctx: CanvasRenderingContext2D, w: number, h: number) {
   return sum / (data.length / 16);
 }
 
-/** Landmarks in the full video frame → coordinates in the centre square crop (what we capture). */
-function toSquare(lm: Landmarks, vw: number, vh: number): Landmarks {
-  const side = Math.min(vw, vh);
-  const ox = (vw - side) / 2;
-  const oy = (vh - side) / 2;
-  return lm.map((p) => ({ ...p, x: (p.x * vw - ox) / side, y: (p.y * vh - oy) / side }));
+/** Portrait 3:4 crop from the centre of the video frame: what the viewfinder shows and what we capture. */
+const ASPECT = 3 / 4;
+function cropOf(vw: number, vh: number) {
+  const w = vw / vh > ASPECT ? vh * ASPECT : vw;
+  const h = w / ASPECT;
+  return { x: (vw - w) / 2, y: (vh - h) / 2, w, h };
+}
+
+/** Landmarks in the full video frame → coordinates in the portrait crop. */
+function toCrop(lm: Landmarks, vw: number, vh: number): Landmarks {
+  const c = cropOf(vw, vh);
+  return lm.map((p) => ({ ...p, x: (p.x * vw - c.x) / c.w, y: (p.y * vh - c.y) / c.h }));
 }
 
 function drawMesh(ctx: CanvasRenderingContext2D, mesh: Mesh, lm: Landmarks, w: number, h: number, ok: boolean, t: number) {
@@ -89,15 +96,16 @@ export default function CameraCapture({ onCapture, onClose }: { onCapture: (data
   const capture = useCallback(() => {
     const v = videoRef.current;
     if (!v || !v.videoWidth) return;
-    // Square crop from the centre, max 1600px — what YouCam expects for a face scan.
-    const side = Math.min(v.videoWidth, v.videoHeight);
-    const out = Math.min(1600, side);
+    // Portrait 3:4 crop from the centre, at most 1600px tall.
+    const c = cropOf(v.videoWidth, v.videoHeight);
+    const outH = Math.round(Math.min(1600, c.h));
+    const outW = Math.round(outH * ASPECT);
     const canvas = document.createElement("canvas");
-    canvas.width = out;
-    canvas.height = out;
+    canvas.width = outW;
+    canvas.height = outH;
     const ctx = canvas.getContext("2d")!;
-    ctx.drawImage(v, (v.videoWidth - side) / 2, (v.videoHeight - side) / 2, side, side, 0, 0, out, out);
-    setLight(brightness(ctx, out, out) < 70 ? "dark" : "ok");
+    ctx.drawImage(v, c.x, c.y, c.w, c.h, 0, 0, outW, outH);
+    setLight(brightness(ctx, outW, outH) < 70 ? "dark" : "ok");
     setShot(canvas.toDataURL("image/jpeg", 0.92));
     setPhase("review");
     setHold(0);
@@ -127,17 +135,19 @@ export default function CameraCapture({ onCapture, onClose }: { onCapture: (data
       const c = canvasRef.current;
       const mesh = meshRef.current;
       if (v && c && mesh && v.videoWidth && (phaseRef.current === "live" || phaseRef.current === "countdown")) {
-        const side = Math.min(v.videoWidth, v.videoHeight);
-        if (c.width !== side) {
-          c.width = side;
-          c.height = side;
+        const crop = cropOf(v.videoWidth, v.videoHeight);
+        const cw = Math.round(crop.w);
+        const ch = Math.round(crop.h);
+        if (c.width !== cw || c.height !== ch) {
+          c.width = cw;
+          c.height = ch;
         }
         const raw = detect(mesh, v);
         const ctx = c.getContext("2d")!;
         if (raw) {
-          const lm = toSquare(raw, v.videoWidth, v.videoHeight);
+          const lm = toCrop(raw, v.videoWidth, v.videoHeight);
           const a = alignment(lm);
-          drawMesh(ctx, mesh, lm, side, side, a.ok, performance.now());
+          drawMesh(ctx, mesh, lm, cw, ch, a.ok, performance.now());
           setHint(a.hint);
           if (a.ok && phaseRef.current === "live" && autoRef.current) {
             alignedSince.current ??= performance.now();
@@ -166,7 +176,7 @@ export default function CameraCapture({ onCapture, onClose }: { onCapture: (data
     try {
       if (!navigator.mediaDevices?.getUserMedia) throw new Error("unsupported");
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 1280 } },
+        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 1280 }, aspectRatio: { ideal: ASPECT } },
         audio: false,
       });
       streamRef.current = stream;
@@ -210,8 +220,9 @@ export default function CameraCapture({ onCapture, onClose }: { onCapture: (data
   const tracking = meshState === "ready";
   const live = phase === "live" || phase === "countdown";
 
-  return (
-    <div role="dialog" aria-modal="true" aria-label="Take a skin scan photo" className="fixed inset-0 z-50 flex flex-col bg-ink text-paper">
+  // Portal to <body>: the step's page transition uses a transform, which would otherwise trap this full-screen layer inside the card.
+  return createPortal(
+    <div role="dialog" aria-modal="true" aria-label="Take a skin scan photo" className="fixed inset-0 z-50 flex flex-col overflow-y-auto bg-ink pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] text-paper">
       <div className="flex items-center justify-between px-4 py-3">
         <div>
           <p className="font-display text-lg leading-tight">Skin scan</p>
@@ -222,7 +233,8 @@ export default function CameraCapture({ onCapture, onClose }: { onCapture: (data
         </button>
       </div>
 
-      <div className="relative mx-auto aspect-square w-full max-w-md overflow-hidden bg-black">
+      {/* Portrait viewfinder: as big as the screen allows, leaving room for the header and controls. */}
+      <div className="relative mx-auto aspect-[3/4] w-[min(100%,calc((100dvh-200px)*0.75),640px)] shrink-0 overflow-hidden bg-black lg:rounded-3xl">
         {/* Live preview is mirrored like a selfie; the captured photo is not. */}
         <video ref={videoRef} playsInline muted className={`h-full w-full scale-x-[-1] object-cover ${phase === "review" ? "hidden" : ""}`} />
         <canvas ref={canvasRef} className={`pointer-events-none absolute inset-0 h-full w-full scale-x-[-1] ${live && tracking ? "" : "hidden"}`} aria-hidden />
@@ -234,27 +246,27 @@ export default function CameraCapture({ onCapture, onClose }: { onCapture: (data
         {live && (
           <>
             {/* Passport-scanner HUD: dimmed surround, oval guide, corner brackets, sweeping line. */}
-            <svg viewBox="0 0 100 100" className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden>
+            <svg viewBox="0 0 75 100" className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden>
               <defs>
                 <mask id="face-hole">
-                  <rect width="100" height="100" fill="white" />
-                  <ellipse cx="50" cy="48" rx="27" ry="35" fill="black" />
+                  <rect width="75" height="100" fill="white" />
+                  <ellipse cx="37.5" cy="47" rx="25" ry="33" fill="black" />
                 </mask>
               </defs>
-              <rect width="100" height="100" fill="rgba(31,42,68,0.5)" mask="url(#face-hole)" />
-              <ellipse cx="50" cy="48" rx="27" ry="35" fill="none" stroke={hold > 0 ? "#5fd0bf" : "#fff"} strokeOpacity="0.35" strokeWidth="0.5" />
+              <rect width="75" height="100" fill="rgba(31,42,68,0.5)" mask="url(#face-hole)" />
+              <ellipse cx="37.5" cy="47" rx="25" ry="33" fill="none" stroke={hold > 0 ? "#5fd0bf" : "#fff"} strokeOpacity="0.35" strokeWidth="0.5" />
               {hold > 0 && (
-                <ellipse cx="50" cy="48" rx="27" ry="35" fill="none" stroke="#5fd0bf" strokeWidth="1.1" pathLength={1} strokeDasharray={`${hold} 1`} transform="rotate(-90 50 48)" />
+                <ellipse cx="37.5" cy="47" rx="25" ry="33" fill="none" stroke="#5fd0bf" strokeWidth="1.1" pathLength={1} strokeDasharray={`${hold} 1`} transform="rotate(-90 37.5 47)" />
               )}
               {[
-                [16, 9, 1, 1],
-                [84, 9, -1, 1],
-                [16, 87, 1, -1],
-                [84, 87, -1, -1],
+                [7, 9, 1, 1],
+                [68, 9, -1, 1],
+                [7, 88, 1, -1],
+                [68, 88, -1, -1],
               ].map(([x, y, sx, sy]) => (
                 <path key={`${x}-${y}`} d={`M${x} ${y + 7 * sy} V${y} H${x + 7 * sx}`} fill="none" stroke="#5fd0bf" strokeWidth="0.8" />
               ))}
-              {!tracking && <line x1="20" x2="80" y1="20" y2="20" stroke="#5fd0bf" strokeWidth="0.4" className="animate-[scanY_2.2s_ease-in-out_infinite_alternate]" />}
+              {!tracking && <line x1="12" x2="63" y1="20" y2="20" stroke="#5fd0bf" strokeWidth="0.4" className="animate-[scanY_2.2s_ease-in-out_infinite_alternate]" />}
             </svg>
             <div className="absolute inset-x-0 top-3 flex justify-center">
               <span className="rounded-full bg-ink/70 px-3 py-1 text-[11px] font-semibold tracking-wide">
@@ -269,7 +281,7 @@ export default function CameraCapture({ onCapture, onClose }: { onCapture: (data
         {phase === "error" && <p className="absolute inset-0 flex items-center justify-center p-8 text-center text-sm leading-relaxed">{error}</p>}
       </div>
 
-      <div className="mx-auto w-full max-w-md flex-1 px-4 py-5">
+      <div className="mx-auto w-full max-w-md flex-1 px-4 py-4">
         {phase === "review" ? (
           <>
             {light === "dark" && <p className="mb-3 rounded-lg bg-sun-soft px-3 py-2 text-sm text-[#7a5410]">This photo looks dark. Results are more accurate in daylight. Retake?</p>}
@@ -317,6 +329,7 @@ export default function CameraCapture({ onCapture, onClose }: { onCapture: (data
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

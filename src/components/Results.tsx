@@ -6,11 +6,11 @@ import { trendingOf } from "@/lib/engine/ingredients";
 import { productCautions, productReasons, productTargets } from "@/lib/engine/reasons";
 import { concLabel, strengthOf } from "@/lib/engine/concentration";
 import { resolveTier } from "@/lib/engine/recommend";
-import { packingBullets } from "@/lib/engine/summary";
 import { bagProducts as bagProductsOf, setApp, toggleBag, toggleOwnedNeed, useApp } from "@/lib/store";
 import type { BudgetTier, Climate, ClimateShift, NeedId, PlanResult, Tier, TripContext } from "@/lib/types";
 import ProductShot from "./ProductShot";
-import { Card, InfoTip, Rich, Stars, StepTitle } from "./ui";
+import TripSkinVisual from "./TripSkinVisual";
+import { Card, InfoTip, Rich, StepTitle } from "./ui";
 
 const TIER_STYLE: Record<Tier, string> = {
   must: "bg-coral-soft text-coral",
@@ -103,212 +103,179 @@ function ProductCard({ item, index, climate, trip, plan, ownedNeeds }: { item: I
   const trending = product ? trendingOf(product.ingredients.filter((i) => !stated.some((c) => c.ingredient === i))) : [];
   const targets = product && !coveredBy ? productTargets(product, plan.report).slice(0, 4) : [];
 
+  const [open, setOpen] = useState(false);
+  const details = targets.length + stated.length + trending.length + reasons.length + cautions.length > 0;
+  const bar = need.score >= 80 ? "bg-coral" : need.score >= 60 ? "bg-sun" : "bg-sea";
+
   return (
     <li
-      className={`animate-[fadeUp_.4s_ease-out_both] rounded-xl border p-4 transition ${have ? "border-dashed border-sea/50 bg-sea-soft/40" : "border-line bg-white"}`}
+      className={`animate-[fadeUp_.4s_ease-out_both] rounded-xl border p-3.5 transition ${have ? "border-dashed border-sea/50 bg-sea-soft/40" : "border-line bg-white"}`}
       style={{ animationDelay: `${index * 50}ms` }}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${have ? "bg-sea text-white" : TIER_STYLE[need.tier]}`}>
-            {have ? "✓ Packed from home" : TIER_LABEL[need.tier]}
-          </span>
-          <h3 className={`mt-1.5 font-semibold ${have ? "text-ink-soft" : ""}`}>{need.title}</h3>
-          {need.spec && <p className="text-xs font-medium text-coral">Need: {need.spec}</p>}
-        </div>
-        <div className={`text-right ${have ? "opacity-50" : ""}`}>
-          <p className="text-xl font-bold tabular-nums leading-none">
+      {/* Category + necessity (number and a short bar) */}
+      <div className="flex items-center justify-between gap-3">
+        <h3 className={`min-w-0 truncate font-semibold ${have ? "text-ink-soft" : ""}`}>
+          {need.title}
+          {need.spec && <span className="ml-1.5 text-xs font-medium text-coral">{need.spec}</span>}
+        </h3>
+        <div className={`flex shrink-0 items-center gap-1.5 ${have ? "opacity-50" : ""}`} title="Necessity for this trip, 0 to 100">
+          <span className="text-base font-bold tabular-nums">
             <CountUp value={need.score} />
-          </p>
-          <p className="text-[10px] uppercase tracking-wider text-ink-soft">necessity</p>
-          <Stars n={need.stars} />
+          </span>
+          <span className="h-1.5 w-12 overflow-hidden rounded-full bg-line">
+            <span className={`block h-full rounded-full ${bar}`} style={{ width: `${need.score}%` }} />
+          </span>
         </div>
       </div>
 
-      {shelfOk && (
-        <p className="mt-2 rounded-lg bg-white/70 px-3 py-2 text-xs">
-          On your shelf: <b>{`${shelfOk.product.brand} ${shelfOk.product.name}`.trim()}</b> ✓{shelfOk.note ? `. ${shelfOk.note}` : ""}
+      {have && (
+        <p className="mt-2 text-xs font-semibold text-sea">
+          ✓ Packed from home{shelfOk ? `: ${`${shelfOk.product.brand} ${shelfOk.product.name}`.trim()}` : ""}
         </p>
       )}
-      {shelfBad && !shelfOk && (
-        <p className="mt-2 rounded-lg bg-coral-soft px-3 py-2 text-xs text-coral">
-          <b>{shelfBad.product.name}</b>: {shelfBad.note}. Upgrade below.
+      {shelfBad && !shelfOk && !have && (
+        <p className="mt-2 rounded-lg bg-coral-soft px-3 py-1.5 text-xs text-coral">
+          <b>{shelfBad.product.name}</b>: {shelfBad.note}
         </p>
       )}
-
       {!have && product && coveredBy && (
-        <p className="mt-3 rounded-lg bg-paper px-3 py-2 text-xs text-ink-soft">
-          Covered by <b className="text-ink">{product.brand} {product.name}</b> (listed under {coveredBy.toLowerCase()}).
+        <p className="mt-2 text-xs text-ink-soft">
+          Covered by <b className="text-ink">{product.brand} {product.name}</b> ({coveredBy.toLowerCase()}).
         </p>
       )}
 
+      {/* The product */}
       {!have && product && !coveredBy && (
-        <>
-          <div className="mt-3 flex items-center gap-3 rounded-lg bg-paper p-2.5">
-            <Link href={`/product/${product.id}`} className="flex min-w-0 flex-1 items-center gap-3">
-              <ProductShot product={product} size={64} />
-              <div className="min-w-0">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-soft">{product.brand}</p>
-                <p className="line-clamp-2 text-sm font-medium leading-snug">{product.name}</p>
-                <p className="text-xs text-ink-soft">
-                  ~${product.estPriceUsd} est. · <span className="font-semibold text-sea">Details ›</span>
-                </p>
-              </div>
-            </Link>
+        <div className="mt-2.5 flex items-center gap-3">
+          <Link href={`/product/${product.id}`} className="flex min-w-0 flex-1 items-center gap-3">
+            <ProductShot product={product} size={56} />
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-soft">{product.brand}</p>
+              <p className="line-clamp-2 text-sm font-medium leading-snug">{product.name}</p>
+              <p className="text-xs text-ink-soft">~${product.estPriceUsd}</p>
+            </div>
+          </Link>
+          <div className="flex w-[104px] shrink-0 flex-col gap-1.5">
             <button
               onClick={() => toggleBag(product.id)}
               aria-pressed={inBag}
-              className={`shrink-0 rounded-lg px-3 py-2 text-xs font-bold transition active:scale-95 ${inBag ? "bg-sea text-white" : "bg-coral text-white hover:bg-coral/90"}`}
+              className={`rounded-lg py-1.5 text-xs font-bold transition active:scale-95 ${inBag ? "bg-sea text-white" : "bg-coral text-white hover:bg-coral/90"}`}
             >
               {inBag ? "✓ In bag" : "+ Bag"}
             </button>
+            <label className="flex cursor-pointer items-center justify-center gap-1 whitespace-nowrap text-[10px] leading-tight text-ink-soft">
+              <input type="checkbox" checked={false} onChange={() => toggleOwnedNeed(need.id)} className="h-3 w-3 shrink-0 accent-sea" />I already have it
+            </label>
           </div>
-          {targets.length > 0 && (
-            <div className="mt-2 flex flex-wrap items-center gap-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-soft">Targets</span>
-              {targets.map((t) => (
-                <span key={t.key} className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${t.band === "weak" ? "bg-coral-soft text-coral" : "bg-sun-soft text-[#8a5d10]"}`}>
-                  {t.label.split(" (")[0]} {t.score}
-                </span>
-              ))}
-            </div>
-          )}
-          {(stated.length > 0 || trending.length > 0) && (
-            <div className="mt-1.5 flex flex-wrap gap-1">
-              {stated.map((c) => (
-                <span key={c.ingredient} className="rounded-full bg-ink px-2 py-0.5 text-[10px] font-semibold text-paper">
-                  {concLabel(c)}
-                  {strengthOf(c) === "high" ? " · High" : ""}
-                </span>
-              ))}
-              {trending.map((t) => (
-                <span key={t} className="rounded-full border border-sea/30 bg-sea-soft px-2 py-0.5 text-[10px] font-semibold text-sea">
-                  {t}
-                </span>
-              ))}
-            </div>
-          )}
-          {reasons.length > 0 && (
-            <ul className="mt-2 space-y-1 text-xs leading-relaxed text-ink-soft">
-              {reasons.map((r) => (
-                <li key={r} className="flex gap-1.5">
-                  <span aria-hidden>•</span>
-                  <span>
-                    <Rich text={r} />
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-          {cautions.map((c) => (
-            <p key={c} className="mt-1.5 text-[11px] text-[#8a5d10]">
-              ⚠︎ {c}
-            </p>
-          ))}
-        </>
+        </div>
       )}
-
-      {!shelfOk && (
-        <label className="mt-3 flex w-fit cursor-pointer items-center gap-2 text-xs text-ink-soft">
-          <input type="checkbox" checked={ownedNeeds.includes(need.id)} onChange={() => toggleOwnedNeed(need.id)} className="h-3.5 w-3.5 accent-sea" />I already have this
+      {/* "Have it" ticked (not from the shelf): let them undo */}
+      {have && !shelfOk && (
+        <label className="mt-1.5 flex w-fit cursor-pointer items-center gap-1.5 text-[11px] text-ink-soft">
+          <input type="checkbox" checked onChange={() => toggleOwnedNeed(need.id)} className="h-3 w-3 accent-sea" />I already have it
         </label>
       )}
-    </li>
-  );
-}
 
-/** Each measure that isn't Strong, weakest first, with the products that address it. */
-function ByConcern({ items, plan }: { items: Item[]; plan: PlanResult }) {
-  const { bag } = useApp();
-  const concerns = plan.report.filter((r) => r.band !== "strong").sort((a, b) => a.score - b.score);
-  const products = items.filter((i) => i.product && !i.coveredBy && i.need.tier !== "skip").map((i) => i.product!);
-  const unique = products.filter((p, i) => products.findIndex((q) => q.id === p.id) === i);
-  return (
-    <div className="space-y-3">
-      {concerns.map((c) => {
-        const list = unique.filter((p) => productTargets(p, plan.report).some((t) => t.key === c.key)).slice(0, 3);
-        return (
-          <section key={c.key} className="rounded-xl border border-line p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-sm font-semibold">{c.label.split(" (")[0]}</p>
-              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${c.band === "weak" ? "bg-coral-soft text-coral" : "bg-sun-soft text-[#8a5d10]"}`}>
-                {c.band} {c.score}
-              </span>
-            </div>
-            {list.length ? (
-              <ul className="space-y-2">
-                {list.map((p) => (
-                  <li key={p.id} className="flex items-center gap-2.5">
-                    <Link href={`/product/${p.id}`} className="flex min-w-0 flex-1 items-center gap-2.5">
-                      <ProductShot product={p} size={44} />
-                      <span className="min-w-0">
-                        <span className="block text-[10px] font-semibold uppercase tracking-wider text-ink-soft">{p.brand}</span>
-                        <span className="line-clamp-1 text-[13px] font-medium">{p.name}</span>
-                        {p.concentrations?.[0] && <span className="text-[10px] font-semibold text-ink">{concLabel(p.concentrations[0])}</span>}
+      {/* Everything else, folded */}
+      {!have && details && (
+        <>
+          <button onClick={() => setOpen(!open)} aria-expanded={open} className="mt-2.5 flex w-full items-center justify-between border-t border-line pt-2 text-[12px] font-semibold text-ink-soft hover:text-ink">
+            <span>
+              Why this one
+              {cautions.length > 0 && (
+                <span className="ml-2 rounded-full bg-sun-soft px-1.5 py-px text-[10px] font-bold text-[#8a5d10]">
+                  ⚠︎ {cautions.length} note{cautions.length > 1 ? "s" : ""}
+                </span>
+              )}
+            </span>
+            <span aria-hidden className={`transition-transform ${open ? "rotate-180" : ""}`}>
+              ▾
+            </span>
+          </button>
+          {open && (
+            <div className="mt-2 space-y-2 animate-[fadeUp_.25s_ease-out]">
+              {targets.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-soft">Targets</span>
+                  {targets.map((t) => (
+                    <span key={t.key} className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${t.band === "weak" ? "bg-coral-soft text-coral" : "bg-sun-soft text-[#8a5d10]"}`}>
+                      {t.label.split(" (")[0]} {t.score}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {(stated.length > 0 || trending.length > 0) && (
+                <div className="flex flex-wrap items-center gap-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-soft">Ingredients</span>
+                  {stated.map((c) => (
+                    <span key={c.ingredient} className="rounded-full bg-ink px-2 py-0.5 text-[10px] font-semibold text-paper">
+                      {concLabel(c)}
+                      {strengthOf(c) === "high" ? " · High" : ""}
+                    </span>
+                  ))}
+                  {trending.map((t) => (
+                    <span key={t} className="rounded-full border border-sea/30 bg-sea-soft px-2 py-0.5 text-[10px] font-semibold text-sea">
+                      {t}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {reasons.length > 0 && (
+                <ul className="space-y-1 text-xs leading-relaxed text-ink-soft">
+                  {reasons.map((r) => (
+                    <li key={r} className="flex gap-1.5">
+                      <span aria-hidden>•</span>
+                      <span>
+                        <Rich text={r} />
                       </span>
-                    </Link>
-                    <button
-                      onClick={() => toggleBag(p.id)}
-                      aria-pressed={bag.includes(p.id)}
-                      className={`shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] font-bold ${bag.includes(p.id) ? "bg-sea text-white" : "bg-coral text-white"}`}
-                    >
-                      {bag.includes(p.id) ? "✓" : "+ Bag"}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-[12px] text-ink-soft">Nothing in this plan targets it for this trip.</p>
-            )}
-          </section>
-        );
-      })}
-    </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {cautions.map((c) => (
+                <p key={c} className="rounded-lg bg-sun-soft px-2.5 py-1.5 text-[11px] text-[#8a5d10]">
+                  ⚠︎ {c}
+                </p>
+              ))}
+              <Link href={`/product/${product!.id}`} className="inline-block text-[11px] font-semibold text-sea hover:underline">
+                Full details ›
+              </Link>
+            </div>
+          )}
+        </>
+      )}
+    </li>
   );
 }
 
 export default function Results({ plan, climate, origin, trip }: { plan: PlanResult; climate: Climate; origin: Climate | null; trip: TripContext }) {
   const app = useApp();
   const { budget, ownedNeeds } = app;
-  const [view, setView] = useState<"priority" | "concern">("priority");
   const items = resolveTier(plan.items, budget);
   const bagProducts = bagProductsOf(app);
   const total = bagProducts.reduce((t, p) => t + p.estPriceUsd, 0);
   const haveCount = items.filter((i) => ownedNeeds.includes(i.need.id) || i.owned.some((o) => o.meetsSpec)).length;
   const ready = bagProducts.length + haveCount > 0;
-  // Server bullets (skin, weather, risk) + live packing bullets that follow the bag and checkboxes.
-  const bullets = [...plan.summary, ...packingBullets(plan.needs, plan.items, bagProducts, ownedNeeds)];
 
   return (
     <div className="space-y-4">
       <ClimateStrip c={climate} origin={origin} shift={plan.shift} />
 
       <Card>
-        <StepTitle n={4} title="Your travel skin plan" />
-        <ul className="space-y-2 rounded-xl bg-sea-soft p-3 text-sm leading-relaxed">
-          {bullets.map((b) => (
-            <li key={b} className="flex gap-2 animate-[fadeUp_.3s_ease-out_both]">
-              <span aria-hidden className="text-sea">
-                ●
-              </span>
-              <span>
-                <Rich text={b} />
-              </span>
-            </li>
-          ))}
-        </ul>
-        {plan.warnings.map((w) => (
-          <p key={w} className="mt-2 rounded-lg bg-sun-soft px-3 py-2 text-xs text-[#7a5410]">
-            ⚠︎ {w}
-          </p>
-        ))}
+        <TripSkinVisual plan={plan} photo={app.photo} mirrored={app.photoMirrored} />
       </Card>
 
       <Card>
+        <StepTitle n={4} title="Your travel skin plan" />
+        {plan.warnings.map((w) => (
+          <p key={w} className="mb-3 rounded-lg bg-sun-soft px-3 py-2 text-xs text-[#7a5410]">
+            ⚠︎ {w}
+          </p>
+        ))}
         <div className="mb-4">
           <p className="mb-1.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-ink-soft">
             Budget
-            <InfoTip text="Add what you want to buy to your bag, and tick I already have this for anything at home." label="How to pick" />
+            <InfoTip text="Tap + Bag for what you want to buy, and tick I already have it for anything you own." label="How to pick" />
           </p>
           <div role="radiogroup" aria-label="Budget" className="grid grid-cols-3 gap-1.5">
             {BUDGETS.map((b) => (
@@ -326,23 +293,7 @@ export default function Results({ plan, climate, origin, trip }: { plan: PlanRes
           </div>
         </div>
 
-        <div role="tablist" aria-label="Group products" className="mb-4 grid grid-cols-2 gap-1 rounded-xl bg-paper p-1 text-xs font-semibold">
-          {(["priority", "concern"] as const).map((v) => (
-            <button
-              key={v}
-              role="tab"
-              aria-selected={view === v}
-              onClick={() => setView(v)}
-              className={`rounded-lg py-1.5 transition ${view === v ? "bg-white text-ink shadow-sm" : "text-ink-soft"}`}
-            >
-              {v === "priority" ? "By priority" : "By concern"}
-            </button>
-          ))}
-        </div>
-
-        {view === "concern" && <ByConcern items={items} plan={plan} />}
-
-        {view === "priority" && SECTIONS.map((tier) => {
+        {SECTIONS.map((tier) => {
           const list = items.filter((i) => i.need.tier === tier);
           if (!list.length) return null;
           return (

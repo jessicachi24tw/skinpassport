@@ -29,7 +29,26 @@ async function reachable(url: string) {
   }
 }
 
+/**
+ * MediaPipe prints its own start-up notes ("INFO: Created TensorFlow Lite XNNPACK delegate…",
+ * "W1101 … OpenGL error checking is disabled") through console.error. They are not errors,
+ * but the Next.js dev server shows them as red stack traces, so drop just those lines.
+ */
+function quietMediaPipeLogs() {
+  if (typeof window === "undefined" || (window as { __mpQuiet?: boolean }).__mpQuiet) return;
+  (window as { __mpQuiet?: boolean }).__mpQuiet = true;
+  const noise = /^(INFO: |[IW]\d{4} \d{2}:\d{2}:\d{2}\.\d+ )/;
+  for (const level of ["error", "warn", "log", "info"] as const) {
+    const original = console[level].bind(console);
+    console[level] = (...args: unknown[]) => {
+      if (typeof args[0] === "string" && noise.test(args[0])) return;
+      original(...args);
+    };
+  }
+}
+
 async function load(): Promise<Mesh | null> {
+  quietMediaPipeLogs();
   try {
     const vision = await import("@mediapipe/tasks-vision");
     const wasmBase = (await reachable(`${LOCAL_WASM}/vision_wasm_internal.wasm`)) ? LOCAL_WASM : CDN_WASM;
@@ -91,8 +110,9 @@ export function alignment(lm: Landmarks) {
   const w = maxX - minX;
   const cx = (minX + maxX) / 2;
   const cy = (minY + maxY) / 2;
-  if (w < 0.32) return { ok: false, hint: "Move closer" };
-  if (w > 0.72) return { ok: false, hint: "Move back a little" };
-  if (Math.abs(cx - 0.5) > 0.09 || Math.abs(cy - 0.48) > 0.1) return { ok: false, hint: "Center your face in the oval" };
+  // Coordinates are in the portrait 3:4 viewfinder; the guide oval is about 2/3 of its width.
+  if (w < 0.42) return { ok: false, hint: "Move closer" };
+  if (w > 0.86) return { ok: false, hint: "Move back a little" };
+  if (Math.abs(cx - 0.5) > 0.09 || Math.abs(cy - 0.47) > 0.09) return { ok: false, hint: "Center your face in the oval" };
   return { ok: true, hint: "Hold still" };
 }

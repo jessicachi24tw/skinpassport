@@ -22,12 +22,14 @@ export interface AppState {
   bag: string[]; // product ids the user chose to buy
   ownedNeeds: NeedId[]; // "I already have this" ticks
   /** Last YouCam AI Skin Simulation result, keyed by photo + intensities. */
-  simulation: { key: string; image: string; before?: string; mock?: boolean } | null;
+  simulation: SimResult | null;
   /** Products the user checked and added (not in our catalog). */
   customProducts: Product[];
   /** The saved passport this plan belongs to (My SkinPassports). */
   currentPassportId: string | null;
 }
+
+export type SimResult = { key: string; image: string; before?: string; mock?: boolean };
 
 export const INITIAL: AppState = {
   step: "trip",

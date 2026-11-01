@@ -149,7 +149,7 @@ export default function ScanResult({
 
       {hasMasks && (
         <div className="mb-4">
-          <div className={`relative mx-auto aspect-square w-2/3 overflow-hidden rounded-2xl bg-ink ${mirrored ? "scale-x-[-1]" : ""}`}>
+          <div className={`relative mx-auto aspect-[3/4] w-3/5 max-w-[280px] overflow-hidden rounded-2xl bg-ink ${mirrored ? "scale-x-[-1]" : ""}`}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={photo!} alt="Your skin scan" className="absolute inset-0 h-full w-full object-cover" />
             {(Object.keys(masks) as ConcernKey[]).map((k) => (

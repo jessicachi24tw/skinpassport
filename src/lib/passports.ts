@@ -110,7 +110,28 @@ export async function createPassport(a: AppState): Promise<string | null> {
   }
 }
 
-/** Open a saved passport: it becomes the current (locked) plan. */
+/**
+ * Save a freshly built plan. If the user went back and changed an existing passport's trip,
+ * scan or shelf, update that passport instead of creating a duplicate.
+ */
+export async function savePlan(a: AppState): Promise<string | null> {
+  if (a.currentPassportId) {
+    try {
+      const p = await getPassport(a.currentPassportId);
+      if (p) {
+        const autoNamed = p.name === defaultName(p.snapshot.trip.destination?.name, p.createdAt);
+        const name = autoNamed ? defaultName(a.trip.destination?.name, p.createdAt) : p.name;
+        await putPassport({ ...p, name, updatedAt: Date.now(), snapshot: snapshotOf(a) });
+        return p.id;
+      }
+    } catch {
+      return a.currentPassportId;
+    }
+  }
+  return createPassport(a);
+}
+
+/** Open a saved passport: it becomes the current plan. */
 export function openPassport(p: Passport) {
   setApp({ ...INITIAL, ...p.snapshot, step: "results", currentPassportId: p.id });
 }
