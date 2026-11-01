@@ -10,8 +10,8 @@ export function checkOwned(p: OwnedProduct, need: Need, ctx: PickContext): { mee
   if (need.id !== "sunscreen") return { meetsSpec: true };
   const spec = sunscreenSpec(ctx.effectiveUv, ctx.activities);
   if (p.spf == null) return { meetsSpec: true, note: `Check yours is ${spec.label}` };
-  if (p.spf < spec.minSpf) return { meetsSpec: false, note: `Yours is SPF ${p.spf} — this trip needs ${spec.label}` };
-  if (spec.waterResistant && p.waterResistant === false) return { meetsSpec: false, note: "Yours isn't water-resistant — this trip needs it" };
+  if (p.spf < spec.minSpf) return { meetsSpec: false, note: `Yours is SPF ${p.spf}, this trip needs ${spec.label}` };
+  if (spec.waterResistant && p.waterResistant === false) return { meetsSpec: false, note: "Yours isn't water-resistant, this trip needs it" };
   return { meetsSpec: true, note: `SPF ${p.spf} meets ${spec.label}` };
 }
 

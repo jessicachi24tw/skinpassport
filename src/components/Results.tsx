@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { trendingOf } from "@/lib/engine/ingredients";
-import { productCautions, productReasons } from "@/lib/engine/reasons";
+import { productCautions, productReasons, productTargets } from "@/lib/engine/reasons";
+import { concLabel, strengthOf } from "@/lib/engine/concentration";
 import { resolveTier } from "@/lib/engine/recommend";
-import { CATALOG } from "@/lib/shop/catalog";
-import { setApp, toggleBag, toggleOwnedNeed, useApp } from "@/lib/store";
+import { packingBullets } from "@/lib/engine/summary";
+import { bagProducts as bagProductsOf, setApp, toggleBag, toggleOwnedNeed, useApp } from "@/lib/store";
 import type { BudgetTier, Climate, ClimateShift, NeedId, PlanResult, Tier, TripContext } from "@/lib/types";
 import ProductShot from "./ProductShot";
-import { Card, Rich, Stars, StepTitle } from "./ui";
+import { Card, InfoTip, Rich, Stars, StepTitle } from "./ui";
 
 const TIER_STYLE: Record<Tier, string> = {
   must: "bg-coral-soft text-coral",
@@ -88,15 +89,19 @@ const BUDGETS: { id: BudgetTier; label: string; hint: string }[] = [
 type Item = ReturnType<typeof resolveTier>[number];
 
 function ProductCard({ item, index, climate, trip, plan, ownedNeeds }: { item: Item; index: number; climate: Climate; trip: TripContext; plan: PlanResult; ownedNeeds: NeedId[] }) {
-  const { bag } = useApp();
+  const { bag, skin } = useApp();
+  const skinType = skin?.skinType ?? null;
   const { need, product, coveredBy } = item;
   const shelfOk = item.owned.find((o) => o.meetsSpec);
   const shelfBad = item.owned.find((o) => !o.meetsSpec);
   const have = !!shelfOk || ownedNeeds.includes(need.id);
   const inBag = !!product && bag.includes(product.id);
-  const reasons = product && !coveredBy ? productReasons(product, need, plan.report, climate, trip) : [];
-  const cautions = product && !coveredBy ? productCautions(product, climate, trip) : [];
-  const trending = product ? trendingOf(product.ingredients) : [];
+  const reasons = product && !coveredBy ? productReasons(product, need, plan.report, climate, trip, 4, skinType) : [];
+  const cautions = product && !coveredBy ? productCautions(product, climate, trip, plan.report, skinType) : [];
+  const stated = product?.concentrations ?? [];
+  // Trending badges, without repeating an ingredient that already has a stated %.
+  const trending = product ? trendingOf(product.ingredients.filter((i) => !stated.some((c) => c.ingredient === i))) : [];
+  const targets = product && !coveredBy ? productTargets(product, plan.report).slice(0, 4) : [];
 
   return (
     <li
@@ -122,7 +127,7 @@ function ProductCard({ item, index, climate, trip, plan, ownedNeeds }: { item: I
 
       {shelfOk && (
         <p className="mt-2 rounded-lg bg-white/70 px-3 py-2 text-xs">
-          On your shelf: <b>{`${shelfOk.product.brand} ${shelfOk.product.name}`.trim()}</b> ✓{shelfOk.note ? ` — ${shelfOk.note}` : ""}
+          On your shelf: <b>{`${shelfOk.product.brand} ${shelfOk.product.name}`.trim()}</b> ✓{shelfOk.note ? `. ${shelfOk.note}` : ""}
         </p>
       )}
       {shelfBad && !shelfOk && (
@@ -158,8 +163,24 @@ function ProductCard({ item, index, climate, trip, plan, ownedNeeds }: { item: I
               {inBag ? "✓ In bag" : "+ Bag"}
             </button>
           </div>
-          {trending.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1">
+          {targets.length > 0 && (
+            <div className="mt-2 flex flex-wrap items-center gap-1">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-soft">Targets</span>
+              {targets.map((t) => (
+                <span key={t.key} className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${t.band === "weak" ? "bg-coral-soft text-coral" : "bg-sun-soft text-[#8a5d10]"}`}>
+                  {t.label.split(" (")[0]} {t.score}
+                </span>
+              ))}
+            </div>
+          )}
+          {(stated.length > 0 || trending.length > 0) && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {stated.map((c) => (
+                <span key={c.ingredient} className="rounded-full bg-ink px-2 py-0.5 text-[10px] font-semibold text-paper">
+                  {concLabel(c)}
+                  {strengthOf(c) === "high" ? " · High" : ""}
+                </span>
+              ))}
               {trending.map((t) => (
                 <span key={t} className="rounded-full border border-sea/30 bg-sea-soft px-2 py-0.5 text-[10px] font-semibold text-sea">
                   {t}
@@ -196,13 +217,67 @@ function ProductCard({ item, index, climate, trip, plan, ownedNeeds }: { item: I
   );
 }
 
+/** Each measure that isn't Strong, weakest first, with the products that address it. */
+function ByConcern({ items, plan }: { items: Item[]; plan: PlanResult }) {
+  const { bag } = useApp();
+  const concerns = plan.report.filter((r) => r.band !== "strong").sort((a, b) => a.score - b.score);
+  const products = items.filter((i) => i.product && !i.coveredBy && i.need.tier !== "skip").map((i) => i.product!);
+  const unique = products.filter((p, i) => products.findIndex((q) => q.id === p.id) === i);
+  return (
+    <div className="space-y-3">
+      {concerns.map((c) => {
+        const list = unique.filter((p) => productTargets(p, plan.report).some((t) => t.key === c.key)).slice(0, 3);
+        return (
+          <section key={c.key} className="rounded-xl border border-line p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-sm font-semibold">{c.label.split(" (")[0]}</p>
+              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${c.band === "weak" ? "bg-coral-soft text-coral" : "bg-sun-soft text-[#8a5d10]"}`}>
+                {c.band} {c.score}
+              </span>
+            </div>
+            {list.length ? (
+              <ul className="space-y-2">
+                {list.map((p) => (
+                  <li key={p.id} className="flex items-center gap-2.5">
+                    <Link href={`/product/${p.id}`} className="flex min-w-0 flex-1 items-center gap-2.5">
+                      <ProductShot product={p} size={44} />
+                      <span className="min-w-0">
+                        <span className="block text-[10px] font-semibold uppercase tracking-wider text-ink-soft">{p.brand}</span>
+                        <span className="line-clamp-1 text-[13px] font-medium">{p.name}</span>
+                        {p.concentrations?.[0] && <span className="text-[10px] font-semibold text-ink">{concLabel(p.concentrations[0])}</span>}
+                      </span>
+                    </Link>
+                    <button
+                      onClick={() => toggleBag(p.id)}
+                      aria-pressed={bag.includes(p.id)}
+                      className={`shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] font-bold ${bag.includes(p.id) ? "bg-sea text-white" : "bg-coral text-white"}`}
+                    >
+                      {bag.includes(p.id) ? "✓" : "+ Bag"}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-[12px] text-ink-soft">Nothing in this plan targets it for this trip.</p>
+            )}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function Results({ plan, climate, origin, trip }: { plan: PlanResult; climate: Climate; origin: Climate | null; trip: TripContext }) {
-  const { budget, ownedNeeds, bag } = useApp();
+  const app = useApp();
+  const { budget, ownedNeeds } = app;
+  const [view, setView] = useState<"priority" | "concern">("priority");
   const items = resolveTier(plan.items, budget);
-  const bagProducts = CATALOG.filter((p) => bag.includes(p.id));
+  const bagProducts = bagProductsOf(app);
   const total = bagProducts.reduce((t, p) => t + p.estPriceUsd, 0);
   const haveCount = items.filter((i) => ownedNeeds.includes(i.need.id) || i.owned.some((o) => o.meetsSpec)).length;
   const ready = bagProducts.length + haveCount > 0;
+  // Server bullets (skin, weather, risk) + live packing bullets that follow the bag and checkboxes.
+  const bullets = [...plan.summary, ...packingBullets(plan.needs, plan.items, bagProducts, ownedNeeds)];
 
   return (
     <div className="space-y-4">
@@ -211,8 +286,8 @@ export default function Results({ plan, climate, origin, trip }: { plan: PlanRes
       <Card>
         <StepTitle n={4} title="Your travel skin plan" />
         <ul className="space-y-2 rounded-xl bg-sea-soft p-3 text-sm leading-relaxed">
-          {plan.summary.map((b) => (
-            <li key={b} className="flex gap-2">
+          {bullets.map((b) => (
+            <li key={b} className="flex gap-2 animate-[fadeUp_.3s_ease-out_both]">
               <span aria-hidden className="text-sea">
                 ●
               </span>
@@ -231,7 +306,10 @@ export default function Results({ plan, climate, origin, trip }: { plan: PlanRes
 
       <Card>
         <div className="mb-4">
-          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-ink-soft">Budget</p>
+          <p className="mb-1.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-ink-soft">
+            Budget
+            <InfoTip text="Add what you want to buy to your bag, and tick I already have this for anything at home." label="How to pick" />
+          </p>
           <div role="radiogroup" aria-label="Budget" className="grid grid-cols-3 gap-1.5">
             {BUDGETS.map((b) => (
               <button
@@ -247,11 +325,24 @@ export default function Results({ plan, climate, origin, trip }: { plan: PlanRes
             ))}
           </div>
         </div>
-        <p className="mb-3 text-xs text-ink-soft">
-          Add what you want to buy to your bag, and tick <b>I already have this</b> for anything at home. Nothing is selected for you.
-        </p>
 
-        {SECTIONS.map((tier) => {
+        <div role="tablist" aria-label="Group products" className="mb-4 grid grid-cols-2 gap-1 rounded-xl bg-paper p-1 text-xs font-semibold">
+          {(["priority", "concern"] as const).map((v) => (
+            <button
+              key={v}
+              role="tab"
+              aria-selected={view === v}
+              onClick={() => setView(v)}
+              className={`rounded-lg py-1.5 transition ${view === v ? "bg-white text-ink shadow-sm" : "text-ink-soft"}`}
+            >
+              {v === "priority" ? "By priority" : "By concern"}
+            </button>
+          ))}
+        </div>
+
+        {view === "concern" && <ByConcern items={items} plan={plan} />}
+
+        {view === "priority" && SECTIONS.map((tier) => {
           const list = items.filter((i) => i.need.tier === tier);
           if (!list.length) return null;
           return (

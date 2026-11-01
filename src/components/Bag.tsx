@@ -2,15 +2,14 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { CATALOG } from "@/lib/shop/catalog";
-import { toggleBag, useApp } from "@/lib/store";
+import { bagProducts, toggleBag, useApp } from "@/lib/store";
 import ProductShot from "./ProductShot";
 
 /** Floating bag button + bottom sheet with the user's picked products. */
 export default function Bag() {
-  const { bag } = useApp();
+  const app = useApp();
   const [open, setOpen] = useState(false);
-  const items = CATALOG.filter((p) => bag.includes(p.id));
+  const items = bagProducts(app);
   const total = items.reduce((t, p) => t + p.estPriceUsd, 0);
 
   if (!items.length && !open) return null;
@@ -50,10 +49,10 @@ export default function Bag() {
                 {items.map((p) => (
                   <li key={p.id} className="flex items-center gap-3 rounded-xl bg-white p-3">
                     <ProductShot product={p} size={52} />
-                    <Link href={`/product/${p.id}`} onClick={() => setOpen(false)} className="min-w-0 flex-1">
+                    <Link href={p.id.startsWith("check-") ? p.url : `/product/${p.id}`} onClick={() => setOpen(false)} className="min-w-0 flex-1">
                       <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-soft">{p.brand}</p>
                       <p className="truncate text-sm font-medium">{p.name}</p>
-                      <p className="text-xs text-ink-soft">~${p.estPriceUsd} est.</p>
+                      <p className="text-xs text-ink-soft">{p.estPriceUsd ? `~$${p.estPriceUsd} est.` : "Your pick · price not listed"}</p>
                     </Link>
                     <div className="flex flex-col items-end gap-1">
                       <a href={p.url} target="_blank" rel="noopener noreferrer" className="rounded-lg bg-coral px-2.5 py-1.5 text-xs font-bold text-white">

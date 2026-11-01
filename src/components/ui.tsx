@@ -1,18 +1,71 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
   return <section className={`rounded-2xl border border-line bg-card p-5 shadow-[0_1px_0_rgba(31,42,68,0.04)] ${className}`}>{children}</section>;
 }
 
-export function StepTitle({ n, title, hint }: { n: number; title: string; hint?: string }) {
+export function StepTitle({ n, title, hint, optional }: { n: number; title: string; hint?: string; optional?: boolean }) {
   return (
     <div className="mb-4 flex items-start gap-3">
       <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-ink text-sm font-semibold text-paper">{n}</span>
       <div>
-        <h2 className="font-display text-xl leading-tight">{title}</h2>
+        <h2 className="flex flex-wrap items-center gap-2 font-display text-xl leading-tight">
+          {title}
+          {optional && <OptionalTag />}
+        </h2>
         {hint && <p className="mt-1 text-sm text-ink-soft">{hint}</p>}
       </div>
     </div>
+  );
+}
+
+/** Small green "Optional" label shown next to a title. */
+export function OptionalTag() {
+  return <span className="rounded-full bg-leaf-soft px-2 py-0.5 font-sans text-[10px] font-bold uppercase tracking-wider text-leaf">Optional</span>;
+}
+
+/** An (i) button that shows a short explanation on tap. */
+export function InfoTip({ text, label = "More info" }: { text: string; label?: string }) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+  return (
+    <span ref={ref} className="relative inline-flex align-middle">
+      <button
+        type="button"
+        aria-label={label}
+        aria-expanded={open}
+        aria-describedby={open ? id : undefined}
+        onClick={() => setOpen((o) => !o)}
+        className={`flex h-[18px] w-[18px] items-center justify-center rounded-full border text-[10px] font-bold italic leading-none transition ${
+          open ? "border-ink bg-ink text-paper" : "border-ink-soft/50 text-ink-soft hover:border-ink hover:text-ink"
+        }`}
+      >
+        i
+      </button>
+      {open && (
+        <span
+          id={id}
+          role="tooltip"
+          className="absolute -left-2 top-6 z-30 w-60 rounded-xl bg-ink px-3 py-2 text-left font-sans text-xs font-normal normal-case leading-snug tracking-normal text-paper shadow-xl"
+        >
+          {text}
+        </span>
+      )}
+    </span>
   );
 }
 

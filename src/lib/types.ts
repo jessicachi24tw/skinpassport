@@ -10,6 +10,16 @@ export interface SkinScores {
   pore?: number;
   texture?: number;
   radiance?: number;
+  wrinkle?: number;
+}
+
+export type SkinTypeLabel = "Normal" | "Oily" | "Dry" | "Combination" | "Redness" | "Dry & Redness" | "Oily & Redness" | "Combination & Redness";
+
+/** YouCam skin type classification for the whole face and each zone. */
+export interface SkinType {
+  whole: SkinTypeLabel | null;
+  tZone?: SkinTypeLabel | null;
+  uZone?: SkinTypeLabel | null;
 }
 
 export type ConcernKey = keyof SkinScores;
@@ -20,6 +30,8 @@ export interface SkinProfile {
   overall: number | null;
   skinAge: number | null;
   scores: SkinScores;
+  /** YouCam skin type classification (if returned). */
+  skinType?: SkinType | null;
   /** YouCam per-concern mask PNGs (transparent overlays, same size as the photo). Expire after ~2 h. */
   masks?: Partial<Record<ConcernKey, string>>;
 }
@@ -89,7 +101,12 @@ export type NeedId =
   | "after_sun"
   | "gentle_cleanser"
   | "lip_care"
-  | "face_mist";
+  | "face_mist"
+  | "blemish_care"
+  | "pore_serum"
+  | "exfoliant"
+  | "line_smoothing"
+  | "toner";
 
 export type Tier = "must" | "recommended" | "optional" | "skip";
 
@@ -142,7 +159,19 @@ export type IngredientId =
   | "cucumber"
   | "aloe"
   | "thermal_water"
-  | "bisabolol";
+  | "bisabolol"
+  | "benzoyl_peroxide"
+  | "glycolic_acid"
+  | "zinc"
+  | "calendula";
+
+/** A percentage the brand states for an ingredient (on the name, label or drug facts). */
+export interface StatedConcentration {
+  ingredient: IngredientId;
+  pct: number;
+  /** Shown instead of the ingredient name, e.g. "Matrixyl". */
+  label?: string;
+}
 
 export interface Product {
   id: string;
@@ -165,6 +194,10 @@ export interface Product {
   tagline: string;
   description: string;
   ingredients: IngredientId[]; // verified against the INCI list
+  /** Only percentages the brand itself states. Nothing estimated. */
+  concentrations?: StatedConcentration[];
+  /** For cleansers and toners: which skin it is built for. */
+  cleanserFor?: "dry" | "oily" | "acne";
   ingredientSource: string; // where the INCI list was checked
   howToUse: string;
   url: string;
@@ -190,8 +223,11 @@ export interface OwnedProduct {
 
 export type Band = "weak" | "normal" | "strong";
 export type RiskLevel = "low" | "medium" | "high";
+export type ConcernGroup = "hydration" | "clarity" | "tone" | "lines";
+
 export interface ConcernReport {
-  key: "moisture" | "oiliness" | "redness" | "age_spot";
+  key: ConcernKey;
+  group: ConcernGroup;
   label: string;
   score: number;
   band: Band;

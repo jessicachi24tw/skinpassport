@@ -63,7 +63,7 @@ export default function ShelfStep({ busy, onDone }: { busy: boolean; onDone: () 
 
   return (
     <Card>
-      <StepTitle n={3} title="What's already on your shelf?" hint="Optional. We'll check if it suits this trip, suggest similar picks from brands you like, and fill the gaps." />
+      <StepTitle n={3} title="Add your shelf" optional hint="Tell us what you already use. We'll check if it suits this trip, suggest similar picks from brands you like, and fill the gaps." />
 
       <div className="relative">
         <input
@@ -80,7 +80,7 @@ export default function ShelfStep({ busy, onDone }: { busy: boolean; onDone: () 
               <li key={r.id}>
                 <button onClick={() => add(r)} className="flex w-full items-start justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-paper">
                   <span className="min-w-0">
-                    <span className="block text-[11px] font-semibold uppercase tracking-wider text-ink-soft">{r.brand || "—"}</span>
+                    <span className="block text-[11px] font-semibold uppercase tracking-wider text-ink-soft">{r.brand || "Unknown brand"}</span>
                     <span className="block truncate">{r.name}</span>
                   </span>
                   <span className="shrink-0 text-[10px] text-ink-soft">{r.source === "catalog" ? "SkinPassport" : "Open Beauty Facts"}</span>
@@ -144,7 +144,7 @@ export default function ShelfStep({ busy, onDone }: { busy: boolean; onDone: () 
                     />
                   </label>
                 )}
-                {p.photosensitizing && <span className="rounded-full bg-sun-soft px-2 py-0.5 font-semibold text-[#8a5d10]">Retinoid / acid — sun-sensitive</span>}
+                {p.photosensitizing && <span className="rounded-full bg-sun-soft px-2 py-0.5 font-semibold text-[#8a5d10]">Retinoid / acid: sun-sensitive</span>}
               </div>
             </li>
           ))}

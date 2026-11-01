@@ -2,11 +2,12 @@
 
 import { useState, useSyncExternalStore } from "react";
 import { CITIES } from "@/lib/places";
-import { SCENARIOS } from "@/lib/engine/scenarios";
 import type { Activity, Place, Transport, TripInput } from "@/lib/types";
 import LocationPicker from "./LocationPicker";
 import TripMap from "./TripMap";
-import { Button, Card, ErrorText, StepTitle } from "./ui";
+import { Button, Card, ErrorText, InfoTip, OptionalTag, StepTitle } from "./ui";
+
+export const WEATHER_TIP = "Within 16 days, we'll use the live weather forecast. Out of 16 days, we'll use historical weather data from last year.";
 
 export const localToday = () => {
   const d = new Date();
@@ -79,11 +80,14 @@ function nearestCity(lat: number, lon: number): Place {
   return { id: `geo-${lat.toFixed(2)},${lon.toFixed(2)}`, name: "My location", country: "", countryCode: "", lat, lon };
 }
 
-function Section({ title, children, hint }: { title: string; children: React.ReactNode; hint?: string }) {
+function Section({ title, children, hint, adorn }: { title: string; children: React.ReactNode; hint?: string; adorn?: React.ReactNode }) {
   return (
     <div className="border-t border-line pt-4 first:border-t-0 first:pt-0">
-      <div className="mb-2 flex items-baseline justify-between">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-soft">{title}</h3>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-ink-soft">
+          {title}
+          {adorn}
+        </h3>
         {hint && <span className="text-[11px] text-ink-soft">{hint}</span>}
       </div>
       {children}
@@ -114,16 +118,12 @@ export default function TripStep({
   disabled,
   busy,
   onPlan,
-  onScenario,
-  activeScenario,
 }: {
   trip: TripInput;
   setTrip: (patch: Partial<TripInput>) => void;
   disabled: boolean;
   busy: boolean;
   onPlan: () => void;
-  onScenario: (id: string) => void;
-  activeScenario: string | null;
 }) {
   const today = useToday();
   const [error, setError] = useState("");
@@ -170,7 +170,7 @@ export default function TripStep({
 
   return (
     <Card className={disabled ? "opacity-60" : ""}>
-      <StepTitle n={1} title="Where are you going?" hint="Route first, then dates, transport and activities." />
+      <StepTitle n={1} title="Set your trip" hint="Route first, then dates, transport and activities." />
 
       <div className="space-y-4">
         <Section title="Route">
@@ -203,20 +203,7 @@ export default function TripStep({
           </div>
         </Section>
 
-        <Section title="Dates" hint={trip.startDate ? `${fmt(trip.startDate)} → ${fmt(trip.startDate, trip.days - 1)}` : undefined}>
-          {trip.startDate && today && (
-            <p className="mb-2 text-[11px] text-ink-soft">
-              {daysFromToday(trip.startDate) + trip.days > 16 ? (
-                <>
-                  More than 16 days out — we&apos;ll use <b>last year&apos;s weather for these dates</b> (“Typical for these dates”).
-                </>
-              ) : (
-                <>
-                  Within 16 days — we&apos;ll use the <b>live weather forecast</b>.
-                </>
-              )}
-            </p>
-          )}
+        <Section title="Dates" adorn={<InfoTip text={WEATHER_TIP} label="Which weather we use" />} hint={trip.startDate ? `${fmt(trip.startDate)} → ${fmt(trip.startDate, trip.days - 1)}` : undefined}>
           <div className="grid grid-cols-[1fr_auto] gap-2">
             <input
               type="date"
@@ -253,7 +240,7 @@ export default function TripStep({
           {!placesDone && !disabled && <p className="mt-2 text-[11px] text-ink-soft">Add both places first.</p>}
         </Section>
 
-        <Section title="Activities & special notes" hint="Optional — add later">
+        <Section title="Activities & special notes" adorn={<OptionalTag />}>
           <div className="flex flex-wrap gap-2">
             {ACTIVITY_TAGS.map((a) => (
               <Chip key={a.id} on={trip.activities.includes(a.id)} onClick={() => toggleActivity(a)} disabled={disabled}>
@@ -278,25 +265,6 @@ export default function TripStep({
       </Button>
       <ErrorText>{error}</ErrorText>
 
-      <div className="mt-5 border-t border-line pt-4">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-soft">Or try a demo destination</p>
-        <p className="-mt-1 mb-2 text-[11px] text-ink-soft">Fixed sample weather, great for a quick demo.</p>
-        <div className="grid grid-cols-3 gap-2">
-          {SCENARIOS.map((s) => (
-            <button
-              key={s.id}
-              disabled={disabled || busy}
-              onClick={() => onScenario(s.id)}
-              className={`rounded-xl border px-2 py-2.5 text-center text-xs font-medium leading-tight transition active:scale-95 ${
-                activeScenario === s.id ? "border-coral bg-coral-soft text-coral" : "border-line bg-white hover:bg-paper"
-              }`}
-            >
-              <span className="block text-lg">{s.emoji}</span>
-              {s.label}
-            </button>
-          ))}
-        </div>
-      </div>
     </Card>
   );
 }

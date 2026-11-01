@@ -12,6 +12,8 @@
   --color-sea-soft: #dcf0ec;
   --color-sun: #e3a12f;
   --color-sun-soft: #fbefd6;
+  --color-leaf: #2f9a57;
+  --color-leaf-soft: #e1f4e7;
   --font-display: ui-serif, Georgia, "Times New Roman", serif;
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
@@ -44,6 +46,23 @@ body {
   0% { transform: scale(0.6); }
   60% { transform: scale(1.25); }
   100% { transform: scale(1); }
+}
+/* Room for the bottom bar on phones, the side rail on wide screens (not on the trip flow, which hides the nav). */
+.app-main:has(.with-nav) { padding-bottom: 84px; }
+@media (min-width: 1024px) {
+  .app-main:has(.with-nav) { padding-bottom: 0; padding-left: 15rem; }
+}
+@keyframes floatY { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+@keyframes startPulse { 0% { box-shadow: 0 0 0 0 rgba(224, 103, 79, 0.45); } 100% { box-shadow: 0 0 0 26px rgba(224, 103, 79, 0); } }
+.page-in { animation: fadeUp 0.35s ease-out both; }
+@keyframes stampIn {
+  0% { opacity: 0; transform: translate(-50%, -50%) rotate(-14deg) scale(1.8); }
+  70% { opacity: 1; transform: translate(-50%, -50%) rotate(-14deg) scale(0.94); }
+  100% { opacity: 1; transform: translate(-50%, -50%) rotate(-14deg) scale(1); }
+}
+@keyframes floatTilt {
+  0%, 100% { transform: rotateX(18deg) rotateZ(-6deg) translateY(0); }
+  50% { transform: rotateX(18deg) rotateZ(-6deg) translateY(-4px); }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }

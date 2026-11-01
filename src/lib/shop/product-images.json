@@ -28,5 +28,29 @@
     "code": "3337875545778",
     "sourceUrl": "https://world.openbeautyfacts.org/product/3337875545778",
     "matchedName": "La Roche-Posay Toleriane Hydrating Gentle Cleanser"
+  },
+  "cerave-cream": {
+    "src": "/products/cerave-cream.png",
+    "code": "3606000537439",
+    "sourceUrl": "https://world.openbeautyfacts.org/product/3606000537439",
+    "matchedName": "CeraVe Moisturizing Cream"
+  },
+  "loreal-revitalift-ha": {
+    "src": "/products/loreal-revitalift-ha.png",
+    "code": "0071249377512",
+    "sourceUrl": "https://world.openbeautyfacts.org/product/0071249377512",
+    "matchedName": "L'Or\u00e9al Paris Revitalift 1.5% Pure Hyaluronic Acid Serum for Face"
+  },
+  "neutrogena-hydro-boost": {
+    "src": "/products/neutrogena-hydro-boost.png",
+    "code": "7891010882983",
+    "sourceUrl": "https://world.openbeautyfacts.org/product/7891010882983",
+    "matchedName": "Neutrogena Neutrogena Hydro Boost Water Gel"
+  },
+  "cerave-acne-control-cleanser": {
+    "src": "/products/cerave-acne-control-cleanser.png",
+    "code": "3606000577138",
+    "sourceUrl": "https://world.openbeautyfacts.org/product/3606000577138",
+    "matchedName": "CeraVe Acne Control Cleanser"
   }
 }

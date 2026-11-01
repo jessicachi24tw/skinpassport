@@ -4,6 +4,21 @@ import { searchCountries, searchLocalCities } from "../../places";
 import { pm25ToUsAqi } from "../weather";
 
 describe("YouCam result normalization", () => {
+  it("reads the skin type for the whole face and each zone", () => {
+    const skin = normalizeResult({
+      output: [
+        { type: "pore", ui_score: 61 },
+        { type: "skin_type", whole: { skin_type: "combination_redness" }, t_zone: { skin_type: "oily" }, u_zone: { skin_type: "dry" } },
+      ],
+    });
+    expect(skin.scores.pore).toBe(61);
+    expect(skin.skinType).toEqual({ whole: "Combination & Redness", tZone: "Oily", uZone: "Dry" });
+  });
+
+  it("reads a flat skin type label too", () => {
+    expect(normalizeResult({ output: [{ type: "skin_type", label: "Dry" }] }).skinType?.whole).toBe("Dry");
+  });
+
   it("maps ui_score per concern plus overall and skin age", () => {
     const skin = normalizeResult({
       output: [

@@ -3,6 +3,9 @@
 import { DEMO_SKIN } from "@/lib/engine/scenarios";
 import { isMockSkin, startSkinAnalysis, YouCamError } from "@/lib/server/youcam";
 
+// Vercel: allow slow upstream calls (YouCam upload, Claude web search).
+export const maxDuration = 60;
+
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));

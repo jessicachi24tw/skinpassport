@@ -105,6 +105,7 @@ function matchScore(seed, hit) {
 
 async function findOnObf(seed, overrides) {
   const pinned = overrides[seed.id];
+  if (pinned === "none") return null; // checked by hand: no correct photo on Open Beauty Facts
   if (pinned) {
     const d = await getJson(`${OBF}/api/v2/product/${pinned}?fields=code,product_name,brands,image_front_url`);
     return d.product ? { ...d.product, code: d.code ?? pinned } : null;
@@ -176,7 +177,7 @@ async function setupImages() {
   const missing = [];
   for (const [i, seed] of seeds.entries()) {
     const out = path.join(outDir, `${seed.id}.png`);
-    const tag = `[${i + 1}/${seeds.length}] ${seed.brand} — ${seed.name}`;
+    const tag = `[${i + 1}/${seeds.length}] ${seed.brand} ${seed.name}`;
     if (!args.force && manifest[seed.id] && (await exists(out))) {
       log(`· ${tag} (already done)`);
       continue;
@@ -217,7 +218,7 @@ async function setupImages() {
   const all = await loadSeeds();
   const rows = all
     .filter((s) => manifest[s.id])
-    .map((s) => `| ${s.brand} — ${s.name} | [${manifest[s.id].code}](${manifest[s.id].sourceUrl}) |`)
+    .map((s) => `| ${s.brand} ${s.name} | [${manifest[s.id].code}](${manifest[s.id].sourceUrl}) |`)
     .join("\n");
   await writeFile(
     path.join(ROOT, "docs/IMAGE_CREDITS.md"),

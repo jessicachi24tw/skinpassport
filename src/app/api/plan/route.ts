@@ -5,16 +5,28 @@ import { climateFactors, climateShift, computeNeeds, concernLevels } from "@/lib
 import { buildRecommendations } from "@/lib/engine/recommend";
 import { buildReport } from "@/lib/engine/report";
 import { templateSummary } from "@/lib/engine/summary";
+import { SKIN_TYPE_LABELS, traitsOf } from "@/lib/engine/skinType";
 import { getShopProvider } from "@/lib/shop/provider";
 import { summaryBullets } from "@/lib/server/llm";
-import type { Activity, Climate, NeedId, OwnedProduct, PlanResult, SkinScores, Transport, TripContext } from "@/lib/types";
+import type { Activity, Climate, NeedId, OwnedProduct, PlanResult, SkinScores, SkinType, SkinTypeLabel, Transport, TripContext } from "@/lib/types";
+
+// Vercel: allow slow upstream calls (YouCam upload, Claude web search).
+export const maxDuration = 60;
 
 const isNum = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
 const ACTIVITIES: Activity[] = ["city", "beach", "pool", "ski", "hiking", "festival", "business", "nightlife"];
 const TRANSPORT: Transport[] = ["plane", "train", "car", "bus", "subway", "ship"];
-const NEEDS: NeedId[] = ["sunscreen", "barrier_cream", "hydrating_serum", "gel_moisturizer", "soothing", "brightening", "after_sun", "gentle_cleanser", "lip_care", "face_mist"];
+const NEEDS: NeedId[] = ["sunscreen", "barrier_cream", "hydrating_serum", "gel_moisturizer", "soothing", "brightening", "after_sun", "gentle_cleanser", "lip_care", "face_mist", "blemish_care", "pore_serum", "exfoliant", "line_smoothing", "toner"];
 const validClimate = (c: Climate | undefined): c is Climate => !!c && isNum(c.uvMax) && isNum(c.humidityPct) && isNum(c.tempMinC) && isNum(c.tempMaxC);
 const pick = <T extends string>(xs: unknown, allowed: T[]) => (Array.isArray(xs) ? xs.filter((x): x is T => allowed.includes(x as T)) : []);
+
+const label = (x: unknown): SkinTypeLabel | null => (SKIN_TYPE_LABELS.includes(x as SkinTypeLabel) ? (x as SkinTypeLabel) : null);
+function cleanSkinType(raw: unknown): SkinType | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const t = { whole: label(r.whole), tZone: label(r.tZone), uZone: label(r.uZone) };
+  return t.whole ? t : null;
+}
 
 /** Accept only well-formed owned products (they come from the browser). */
 function cleanOwned(raw: unknown): OwnedProduct[] {
@@ -61,11 +73,15 @@ export async function POST(req: Request) {
     notes: String(body.trip?.notes ?? "").slice(0, 500),
   };
   const owned = cleanOwned(body.owned);
+  const skinType = cleanSkinType(body.skinType);
+  const st = traitsOf(skinType);
 
-  const needs = computeNeeds(skin, climate, trip, origin);
+  const needs = computeNeeds(skin, climate, trip, origin, skinType);
   const f = climateFactors(climate, trip.activities);
   const ctx = {
-    sensitive: concernLevels(skin).sensitivity >= 40,
+    sensitive: concernLevels(skin).sensitivity >= 40 || st.redness,
+    skinBase: st.base,
+    scores: skin,
     effectiveUv: f.effectiveUv,
     activities: trip.activities,
     preferredBrands: Array.from(new Set(owned.map((o) => o.brand).filter(Boolean))),
@@ -77,11 +93,11 @@ export async function POST(req: Request) {
   const warnings: string[] = [];
   const photo = owned.filter((o) => o.photosensitizing);
   if (photo.length && f.uv >= 40) {
-    warnings.push(`${photo.map((o) => o.name).join(", ")} can make skin more sun-sensitive — pause it a few days before a trip with UV ${f.effectiveUv.toFixed(0)}.`);
+    warnings.push(`${photo.map((o) => o.name).join(", ")} can make skin more sun-sensitive. Pause it a few days before a trip with UV ${f.effectiveUv.toFixed(0)}.`);
   }
   for (const r of items) for (const o of r.owned) if (!o.meetsSpec && o.note) warnings.push(`${o.product.name}: ${o.note}.`);
 
-  const summary = await summaryBullets({ report, climate, shift, trip, needs }, templateSummary(report, climate, shift, needs, items));
+  const summary = await summaryBullets({ report, climate, shift, trip, needs, skinType }, templateSummary(report, climate, shift, skinType));
   const result: PlanResult = { needs, items, shift, report, summary: summary.bullets, summarySource: summary.source, warnings };
   return Response.json(result);
 }

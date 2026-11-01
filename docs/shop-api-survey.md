@@ -16,6 +16,6 @@ Goal: turn each recommendation into a real product with a price and a "Buy now" 
 
 1. **Demo (this week):** keep the curated catalog. Products are real, the cart changes deterministically between scenarios, and nothing can fail on stage. Add an Amazon Associates tag via `NEXT_PUBLIC_AMAZON_ASSOCIATE_TAG` if you have one.
 2. **Stretch goal:** a Shopify dev store with ~15 products, implementing `ShopProvider` with Storefront API search + `cartCreate`, so "Buy the Essential kit" opens one real checkout.
-3. **Business story for judges:** brands (L'Oréal, Shiseido, Estée Lauder groups) pay for contextual placement or plug in their catalog — this is the Contextual Commerce revenue model.
+3. **Business story for judges:** brands (L'Oréal, Shiseido, Estée Lauder groups) pay for contextual placement or plug in their catalog, this is the Contextual Commerce revenue model.
 
 A browser extension solves a different problem (helping users while browsing a shop), adds install friction, and can't create a cart across retailers, so it's a weak fit for a mobile-first demo.

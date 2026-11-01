@@ -2,8 +2,11 @@
 // To plug in a real store (e.g. Shopify Storefront API or Amazon Creators API),
 // implement `ShopProvider` and return it from `getShopProvider()`.
 
-import type { BudgetTier, Need, Product } from "../types";
+import type { BudgetTier, Need, Product, SkinScores } from "../types";
+import { strengthFit } from "../engine/concentration";
 import { sunscreenSpec } from "../engine/necessity";
+import { cleanserKind } from "../engine/skinType";
+import { groupOf, sameBrand } from "./brandGroups";
 import { CATALOG, TIERS } from "./catalog";
 
 export interface PickContext {
@@ -12,7 +15,13 @@ export interface PickContext {
   activities: Parameters<typeof sunscreenSpec>[1];
   /** Brands the user already uses (Step 3) — similar products are preferred. */
   preferredBrands?: string[];
+  /** YouCam skin type base: steers texture (rich vs gel). */
+  skinBase?: "normal" | "oily" | "dry" | "combination" | null;
+  /** YouCam scores, used to pick the right kind of cleanser. */
+  scores?: SkinScores;
 }
+
+const TARGETED = ["blemish_care", "pore_serum", "exfoliant"];
 
 export interface ShopProvider {
   name: string;
@@ -32,9 +41,27 @@ export function fitScore(p: Product, need: Need, ctx: PickContext): number {
     // Strong sun: higher SPF is a plus. Mild sun: avoid paying for overkill.
     s += spec.minSpf >= 50 ? Math.min(2, extra / 5) : -extra / 15;
   }
+  // Texture by skin type, for face moisturizers.
+  if (need.id === "barrier_cream" || need.id === "gel_moisturizer" || need.id === "hydrating_serum") {
+    const rich = p.texture === "rich" || p.texture === "balm";
+    const light = p.texture === "gel" || p.texture === "light";
+    if (ctx.skinBase === "dry") s += rich ? 2 : 0;
+    if (ctx.skinBase === "oily" || ctx.skinBase === "combination") s += light ? 2 : rich ? -2 : 0;
+  }
+  // Cleansers: the kind that fits the skin's main concern.
+  if ((need.id === "gentle_cleanser" || need.id === "toner") && p.cleanserFor) s += p.cleanserFor === cleanserKind(ctx) ? 4 : -1;
+  // Stated strength × skin type × sun (higher is not always better).
+  const strongSun = ctx.effectiveUv >= 6;
+  s += strengthFit(p, { sensitive: ctx.sensitive, oily: ctx.skinBase === "oily" || ctx.skinBase === "combination", strongSun, targeted: TARGETED.includes(need.id) });
+  // Retinoids don't belong on a sunny trip.
+  if (strongSun && p.ingredients.includes("retinoid")) s -= 4;
   if (ctx.sensitive && p.sensitiveFriendly) s += 3;
   if (ctx.sensitive && p.fragranceFree) s += 1;
-  if (ctx.preferredBrands?.some((b) => b.toLowerCase() === p.brand.toLowerCase())) s += 4;
+  if (ctx.sensitive && !p.fragranceFree) s -= 1;
+  // Brands the user already uses: the same brand counts most, then the same group.
+  const brands = ctx.preferredBrands ?? [];
+  if (brands.some((b) => sameBrand(b, p.brand))) s += 4;
+  else if (groupOf(p.brand) && brands.some((b) => groupOf(b) === groupOf(p.brand))) s += 2;
   if (p.loreal) s += 0.5; // L'Oréal Groupe partner catalog first
   if (p.needs[0] === need.id) s += 2; // primary purpose beats multi-use
   s -= p.estPriceUsd / 100; // within a tier, gently prefer the cheaper item

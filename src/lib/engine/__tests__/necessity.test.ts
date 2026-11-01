@@ -4,6 +4,10 @@ import { buildRecommendations, checkOwned, resolveTier } from "../recommend";
 import { bandFor, buildReport } from "../report";
 import { productReasons, productCautions } from "../reasons";
 import { buildActionPlan } from "../actionPlan";
+import { SIM_MAX, simulationPlan } from "../simulation";
+import { strengthOf } from "../concentration";
+import { fitScore } from "../../shop/provider";
+import { groupOf } from "../../shop/brandGroups";
 import { catalogProvider } from "../../shop/provider";
 import { CATALOG, getProduct } from "../../shop/catalog";
 import { DEMO_ORIGIN, DEMO_ORIGIN_CLIMATE, DEMO_SKIN, getScenario } from "../scenarios";
@@ -170,13 +174,13 @@ describe("action plan", () => {
     const { s, report } = await run("miami-uv");
     const retinol: OwnedProduct = { id: "r", name: "Retinol Night Serum", brand: "", needs: [], photosensitizing: true, treatment: true, source: "manual" };
     const plan = buildActionPlan({ trip: trip("2026-11-10"), daysUntil: 13, climate: s.climate, origin: null, report, bag: [], owned: [retinol], ownedNeeds: [] });
-    const morning = plan.during.find((d) => d.title === "Every morning")!.steps.join(" ");
+    const morning = plan.during.find((d) => d.id === "am")!.steps.map((s) => s.item?.name ?? "").join(" ");
     expect(morning).not.toMatch(/Retinol/);
     expect(plan.before.map((b) => b.text).join(" ")).toMatch(/Pause \*\*Retinol Night Serum\*\*/);
-    expect(plan.shopping.fromHome).not.toContain("Retinol Night Serum");
+    expect(plan.during.find((d) => d.id === "tips")!.steps.map((s) => s.text).join(" ")).toMatch(/Leave \*\*Retinol Night Serum\*\* at home/);
   });
 
-  it("lists owned items in the shopping list without a price", async () => {
+  it("uses bag products (with photos) and owned items in the routine", async () => {
     const { s, report } = await run("miami-uv");
     const plan = buildActionPlan({
       trip: trip("2026-11-10"),
@@ -188,8 +192,146 @@ describe("action plan", () => {
       owned: [],
       ownedNeeds: ["lip_care"],
     });
-    expect(plan.shopping.totalUsd).toBe(38);
-    expect(plan.shopping.fromHome).toEqual(["your lip repair"]);
-    expect(plan.during.find((d) => d.title === "Every morning")!.steps.join(" ")).toMatch(/Anthelios/);
+    const sun = plan.during.find((d) => d.id === "am")!.steps.find((s) => s.icon === "☀️")!;
+    expect(sun.item?.productId).toBe("lrp-anthelios-60");
+    expect(sun.text).toMatch(/SPF 50\+/);
+    expect(plan.during.find((d) => d.id === "travel")!.steps.some((s) => s.item?.name === "your lip repair")).toBe(true);
+  });
+
+  it("never uses em dashes in plan text", async () => {
+    const { s, report } = await run("nyc-winter");
+    const plan = buildActionPlan({ trip: { ...trip("2026-11-10"), destination: s.place }, daysUntil: 3, climate: s.climate, origin: DEMO_ORIGIN_CLIMATE, report, bag: CATALOG.slice(0, 6), owned: [], ownedNeeds: [] });
+    const all = [...plan.before.map((b) => b.text + b.when), ...plan.during.flatMap((g) => [g.title, ...g.steps.map((x) => x.text)])].join(" ");
+    expect(all).not.toMatch(/—/);
+  });
+});
+
+describe("YouCam analysis scope", () => {
+  it("reports the 9 measures, grouped", async () => {
+    const { report } = await run("nyc-winter");
+    expect(report.map((r) => r.key).sort()).toEqual(["acne", "age_spot", "moisture", "oiliness", "pore", "radiance", "redness", "texture", "wrinkle"]);
+    expect(report.find((r) => r.key === "pore")?.group).toBe("clarity");
+  });
+});
+
+describe("skin type", () => {
+  const s = () => getScenario("miami-uv")!;
+  const trip = { activities: ["beach" as const], transport: ["plane" as const], days: 4 };
+
+  it("oily skin raises the gel moisturizer, dry skin the barrier cream", () => {
+    const oily = computeNeeds(DEMO_SKIN.scores, s().climate, trip, null, { whole: "Oily" });
+    const dry = computeNeeds(DEMO_SKIN.scores, s().climate, trip, null, { whole: "Dry" });
+    const score = (n: ReturnType<typeof computeNeeds>, id: string) => n.find((x) => x.id === id)!.score;
+    expect(score(oily, "gel_moisturizer")).toBeGreaterThan(score(dry, "gel_moisturizer"));
+    expect(score(dry, "barrier_cream")).toBeGreaterThan(score(oily, "barrier_cream"));
+  });
+
+  it("redness-prone types always get soothing care as a must-pack", () => {
+    const n = computeNeeds({ ...DEMO_SKIN.scores, redness: 90 }, s().climate, trip, null, { whole: "Oily & Redness" });
+    expect(n.find((x) => x.id === "soothing")!.tier).toBe("must");
+  });
+
+  it("combination skin gets zone advice in the plan", async () => {
+    const { report } = await run("miami-uv");
+    const plan = buildActionPlan({
+      trip: { origin: DEMO_ORIGIN, destination: s().place, startDate: "2026-11-20", days: 4, transport: ["plane"], activities: ["beach"], notes: "" },
+      daysUntil: 20,
+      climate: s().climate,
+      origin: null,
+      report,
+      bag: [],
+      owned: [],
+      ownedNeeds: [],
+      skinType: { whole: "Combination", tZone: "Oily", uZone: "Dry" },
+    });
+    expect(plan.during.find((d) => d.id === "tips")!.steps.map((x) => x.text).join(" ")).toMatch(/T-zone/);
+  });
+
+  it("explains a light texture for combination skin", async () => {
+    const { s: sc, trip: t, report, byId } = await run("miami-uv");
+    const r = productReasons(getProduct("neutrogena-hydro-boost")!, byId.gel_moisturizer, report, sc.climate, t, 4, { whole: "Combination" });
+    expect(r.join(" ")).toMatch(/Combination.*T-zone/);
+  });
+});
+
+describe("skin simulation", () => {
+  it("only simulates weak/normal concerns that the chosen products address, capped", async () => {
+    const { report } = await run("nyc-winter");
+    const none = simulationPlan(report, new Set(), 10);
+    expect(none.lines).toEqual([]);
+    const p = simulationPlan(report, new Set(["hydrating_serum", "barrier_cream"]), 10);
+    const keys = p.lines.map((l) => l.key);
+    expect(keys).toContain("texture"); // 58, Normal
+    expect(keys).toContain("radiance"); // 49
+    expect(keys).not.toContain("oiliness"); // 78 is Strong and not addressed
+    expect(Math.max(...p.lines.map((l) => l.intensity))).toBeLessThanOrEqual(SIM_MAX);
+  });
+
+  it("does not simulate fading dark spots when the trip is too close for brightening", async () => {
+    const { report } = await run("miami-uv");
+    const weakSpots = report.map((r) => (r.key === "age_spot" ? { ...r, score: 40, band: "weak" as const } : r));
+    expect(simulationPlan(weakSpots, new Set(["brightening"]), 6).lines.map((l) => l.key)).not.toContain("spots");
+    expect(simulationPlan(weakSpots, new Set(["brightening"]), 40).lines.map((l) => l.key)).toContain("spots");
+  });
+});
+
+describe("targeted care, cleansers, strength and brands", () => {
+  const miami = () => getScenario("miami-uv")!;
+  const trip = { activities: ["beach" as const], transport: ["plane" as const], days: 4 };
+  const need = (id: string, skin = DEMO_SKIN.scores, type = DEMO_SKIN.skinType ?? null) =>
+    computeNeeds(skin, miami().climate, trip, null, type).find((n) => n.id === id)!;
+
+  it("visible pores in a hot, humid place call for a pore serum", () => {
+    expect(need("pore_serum").tier).not.toBe("skip");
+    expect(need("pore_serum", { ...DEMO_SKIN.scores, pore: 90 }).tier).toBe("skip");
+  });
+
+  it("strong sun pulls the exfoliant down", () => {
+    const nyc = computeNeeds(DEMO_SKIN.scores, getScenario("nyc-winter")!.climate, { ...trip, activities: ["city"] }, null).find((n) => n.id === "exfoliant")!;
+    expect(need("exfoliant", DEMO_SKIN.scores, null).score).toBeLessThan(nyc.score);
+  });
+
+  it("only uses percentages the brand states, and grades them", () => {
+    const to = getProduct("ordinary-niacinamide-10")!;
+    expect(strengthOf(to.concentrations![0])).toBe("high");
+    expect(strengthOf(getProduct("cerave-acne-control-cleanser")!.concentrations![0])).toBe("standard");
+    expect(getProduct("cerave-foaming-cleanser")!.concentrations).toBeUndefined();
+  });
+
+  it("reactive skin ranks 10% niacinamide lower than oily, non-reactive skin does", () => {
+    const n = need("pore_serum");
+    const base = { effectiveUv: 3, activities: trip.activities };
+    const p = getProduct("ordinary-niacinamide-10")!;
+    expect(fitScore(p, n, { ...base, sensitive: true })).toBeLessThan(fitScore(p, n, { ...base, sensitive: false, skinBase: "oily" }));
+  });
+
+  it("picks the cleanser kind from the skin", () => {
+    const n = need("gentle_cleanser");
+    const ctx = { effectiveUv: 3, activities: trip.activities, sensitive: false };
+    const acneSkin = { ...DEMO_SKIN.scores, acne: 40 };
+    const acne = getProduct("cerave-acne-control-cleanser")!;
+    const hydrating = getProduct("cerave-hydrating-cleanser")!;
+    expect(fitScore(acne, n, { ...ctx, scores: acneSkin })).toBeGreaterThan(fitScore(hydrating, n, { ...ctx, scores: acneSkin }));
+    const drySkin = { ...DEMO_SKIN.scores, acne: 90, oiliness: 80, pore: 85 };
+    expect(fitScore(hydrating, n, { ...ctx, scores: drySkin })).toBeGreaterThan(fitScore(acne, n, { ...ctx, scores: drySkin }));
+  });
+
+  it("the same brand scores most, then the same group", () => {
+    expect(groupOf("Kiehl's")).toBe("L'Oréal Groupe");
+    expect(groupOf("the ordinary")).toBe("The Estée Lauder Companies");
+    const n = need("pore_serum");
+    const p = getProduct("lrp-niacinamide-10")!;
+    const ctx = { effectiveUv: 3, activities: trip.activities, sensitive: false };
+    const same = fitScore(p, n, { ...ctx, preferredBrands: ["La Roche-Posay"] });
+    const group = fitScore(p, n, { ...ctx, preferredBrands: ["Kiehl's"] });
+    const none = fitScore(p, n, { ...ctx, preferredBrands: ["Clinique"] });
+    expect(same).toBeGreaterThan(group);
+    expect(group).toBeGreaterThan(none);
+  });
+
+  it("shows the stated percentage in the reason", async () => {
+    const { report } = await run("miami-uv");
+    const r = productReasons(getProduct("ordinary-niacinamide-10")!, need("pore_serum"), report, miami().climate, trip, 6, { whole: "Oily" });
+    expect(r.join(" ")).toMatch(/Niacinamide 10%/);
   });
 });

@@ -272,7 +272,7 @@ export default function CameraCapture({ onCapture, onClose }: { onCapture: (data
       <div className="mx-auto w-full max-w-md flex-1 px-4 py-5">
         {phase === "review" ? (
           <>
-            {light === "dark" && <p className="mb-3 rounded-lg bg-sun-soft px-3 py-2 text-sm text-[#7a5410]">This photo looks dark — results are more accurate in daylight. Retake?</p>}
+            {light === "dark" && <p className="mb-3 rounded-lg bg-sun-soft px-3 py-2 text-sm text-[#7a5410]">This photo looks dark. Results are more accurate in daylight. Retake?</p>}
             <div className="grid grid-cols-2 gap-3">
               <button onClick={start} className="rounded-xl border border-white/30 py-3 text-sm font-semibold hover:bg-white/10">
                 Retake

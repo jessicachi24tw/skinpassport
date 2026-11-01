@@ -2,7 +2,8 @@
 // (and how different it is from home) and computes a Necessity Score (0–100)
 // for each product category. Pure functions only, so it is easy to test.
 
-import type { Activity, Climate, ClimateShift, Need, NeedId, SkinScores, Tier, TripContext } from "../types";
+import type { Activity, Climate, ClimateShift, Need, NeedId, SkinScores, SkinType, Tier, TripContext } from "../types";
+import { traitsOf } from "./skinType";
 
 const clamp = (n: number, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, n));
 const has = (list: Activity[], ...xs: Activity[]) => xs.some((x) => list.includes(x));
@@ -20,6 +21,12 @@ export function concernLevels(s: SkinScores) {
     oil: clamp(100 - s.oiliness),
     sensitivity: clamp(100 - s.redness),
     spots: clamp(100 - s.age_spot),
+    // Optional extra YouCam scores (neutral 60 if missing).
+    pores: clamp(100 - (s.pore ?? 60)),
+    acne: clamp(100 - (s.acne ?? 60)),
+    texture: clamp(100 - (s.texture ?? 60)),
+    dullness: clamp(100 - (s.radiance ?? 60)),
+    lines: clamp(100 - (s.wrinkle ?? 70)),
   };
 }
 
@@ -102,12 +109,19 @@ export const NEED_TITLES: Record<NeedId, string> = {
   soothing: "Soothing / anti-redness care",
   brightening: "Brightening (vitamin C)",
   after_sun: "After-sun gel",
-  gentle_cleanser: "Gentle cleanser",
+  gentle_cleanser: "Cleanser",
   lip_care: "Lip repair",
   face_mist: "Hydrating face mist",
+  blemish_care: "Blemish care",
+  pore_serum: "Pore-refining serum",
+  exfoliant: "Gentle exfoliant",
+  line_smoothing: "Line-smoothing serum",
+  toner: "Toner",
 };
 
-export function computeNeeds(skin: SkinScores, climate: Climate, trip: TripContext, origin: Climate | null = null): Need[] {
+export function computeNeeds(skin: SkinScores, climate: Climate, trip: TripContext, origin: Climate | null = null, skinType: SkinType | null = null): Need[] {
+  const st = traitsOf(skinType);
+  const typeName = skinType?.whole ?? "";
   const k = concernLevels(skin);
   const f = climateFactors(climate, trip.activities);
   const shift = climateShift(origin, climate);
@@ -139,8 +153,9 @@ export function computeNeeds(skin: SkinScores, climate: Climate, trip: TripConte
 
   add(
     "barrier_cream",
-    k.dryness * 0.5 + f.dryAir * 0.3 + f.cold * 0.3 + sh.colder * 0.12 + sh.drier * 0.1 + (flying ? 8 : 0) - f.hot * 0.35 - k.oil * 0.15,
+    k.dryness * 0.5 + f.dryAir * 0.3 + f.cold * 0.3 + sh.colder * 0.12 + sh.drier * 0.1 + (flying ? 8 : 0) - f.hot * 0.35 - k.oil * 0.15 + (st.base === "dry" ? 12 : st.base === "oily" ? -10 : st.base === "combination" ? 3 : 0),
     [
+      st.base === "dry" && `Your skin type is ${typeName}: rich creams keep moisture in`,
       k.dryness >= 40 && `Your moisture score is low (${skin.moisture}/100)`,
       f.dryAir >= 40 && `Dry air at destination (${climate.humidityPct}% humidity)`,
       f.cold >= 40 && `Cold temperatures (down to ${climate.tempMinC}°C) weaken the skin barrier`,
@@ -151,9 +166,11 @@ export function computeNeeds(skin: SkinScores, climate: Climate, trip: TripConte
 
   add(
     "hydrating_serum",
-    k.dryness * 0.55 + f.dryAir * 0.2 + f.cold * 0.1 + f.hot * 0.15 + sh.drier * 0.1 + (flying ? 12 : groundTransit ? 4 : 0),
+    k.dryness * 0.55 + f.dryAir * 0.2 + f.cold * 0.1 + f.hot * 0.15 + sh.drier * 0.1 + (flying ? 12 : groundTransit ? 4 : 0) + Math.max(0, k.texture - 40) * 0.1 + Math.max(0, k.dullness - 40) * 0.08,
     [
       k.dryness >= 40 && `Your moisture score is low (${skin.moisture}/100)`,
+      k.texture >= 45 && `Texture looks rough (${skin.texture}/100)`,
+      k.dullness >= 45 && `Skin looks dull (radiance ${skin.radiance}/100)`,
       f.hot >= 40 && "Heat and sun pull water out of the skin",
       flying && "Re-hydrate after the flight",
     ],
@@ -161,18 +178,24 @@ export function computeNeeds(skin: SkinScores, climate: Climate, trip: TripConte
 
   add(
     "gel_moisturizer",
-    f.hot * 0.4 + f.humid * 0.35 + k.oil * 0.25 + k.dryness * 0.15,
+    f.hot * 0.4 + f.humid * 0.35 + k.oil * 0.25 + k.dryness * 0.15 + Math.max(0, k.pores - 40) * 0.12 + Math.max(0, k.acne - 40) * 0.1 + (st.base === "oily" ? 12 : st.base === "combination" ? 8 : st.base === "dry" ? -10 : 0),
     [
+      st.base === "oily" && `Your skin type is ${typeName}: light gels won't feel heavy`,
+      st.base === "combination" && "Combination skin: a light gel for the T-zone",
+      k.pores >= 45 && f.humid + f.hot >= 40 && `Visible pores (${skin.pore}/100) + heat or humidity`,
       f.hot >= 40 && `Hot weather (up to ${climate.tempMaxC}°C)`,
-      f.humid >= 40 && `Humid air (${climate.humidityPct}%) — heavy creams can clog pores`,
+      f.humid >= 40 && `Humid air (${climate.humidityPct}%): heavy creams can clog pores`,
       k.oil >= 40 && "Your skin tends to get oily",
     ],
   );
 
+  const soothingRaw = k.sensitivity * 0.55 + f.pollution * 0.25 + f.cold * 0.15 + f.uv * 0.15 + sh.shock * 0.12;
   add(
     "soothing",
-    k.sensitivity * 0.55 + f.pollution * 0.25 + f.cold * 0.15 + f.uv * 0.15 + sh.shock * 0.12,
+    // Redness-prone skin types always get soothing care as a must-pack.
+    st.redness ? Math.max(soothingRaw + 15, 72) : soothingRaw,
     [
+      st.redness && `Your skin type is ${typeName}: calm the barrier first`,
       k.sensitivity >= 40 && `Your redness score shows sensitivity (${skin.redness}/100)`,
       f.pollution >= 30 && `Air quality is poor (US AQI up to ${climate.aqiMax})`,
       f.cold >= 40 && "Cold wind can trigger redness",
@@ -193,7 +216,8 @@ export function computeNeeds(skin: SkinScores, climate: Climate, trip: TripConte
     k.sensitivity >= 40 && "Sensitive skin recovers slower from sun",
   ]);
 
-  add("gentle_cleanser", 25 + f.pollution * 0.4 + k.sensitivity * 0.2 + (f.uv >= 60 ? 10 : 0) + (water ? 5 : 0), [
+  add("gentle_cleanser", 25 + f.pollution * 0.4 + k.sensitivity * 0.2 + (f.uv >= 60 ? 10 : 0) + (water ? 5 : 0) + Math.max(0, k.acne - 40) * 0.2, [
+    k.acne >= 45 && `Breakout-prone skin (${skin.acne}/100): cleanse gently every night`,
     f.pollution >= 30 && "Remove pollution particles every evening",
     f.uv >= 60 && "Removes water-resistant sunscreen",
     trip.activities.includes("pool") && "Rinse off pool chlorine",
@@ -208,6 +232,56 @@ export function computeNeeds(skin: SkinScores, climate: Climate, trip: TripConte
     flying && "Airplane cabins are around 10–20% humidity",
     !flying && groundTransit && "Air-conditioned trains, buses and cars dry out skin",
   ]);
+
+  // ---------- Targeted care (tied to the trip: heat and humidity, dry air, sun) ----------
+  const steamy = Math.max(f.hot, f.humid);
+  add(
+    "blemish_care",
+    k.acne >= 30 ? k.acne * 0.75 + steamy * 0.2 + f.pollution * 0.1 + (st.base === "oily" ? 6 : 0) : k.acne * 0.4,
+    [
+      k.acne >= 30 && `Your acne score is ${skin.acne}/100`,
+      steamy >= 40 && "Sweat and sunscreen in the heat can clog pores",
+      f.pollution >= 30 && `Air quality is poor (AQI ${climate.aqiMax})`,
+    ],
+  );
+  add(
+    "pore_serum",
+    k.pores >= 30 ? k.pores * 0.7 + steamy * 0.2 + k.oil * 0.15 + (st.base === "oily" || st.base === "combination" ? 8 : 0) : k.pores * 0.4,
+    [
+      k.pores >= 30 && `Your pore score is ${skin.pore}/100`,
+      steamy >= 40 && "Heat and humidity make pores look larger",
+      (st.base === "oily" || st.base === "combination") && `Your skin type is ${typeName}`,
+    ],
+  );
+  // Exfoliating acids make skin more sun-sensitive, so strong sun pulls this down.
+  add(
+    "exfoliant",
+    k.texture >= 30 ? k.texture * 0.75 + f.dryAir * 0.15 + k.dullness * 0.1 - f.uv * 0.3 - (st.redness ? 10 : 0) : k.texture * 0.3,
+    [
+      k.texture >= 30 && `Your texture score is ${skin.texture}/100`,
+      f.dryAir >= 40 && "Dry air leaves flaky, rough patches",
+      f.uv >= 50 && "Strong sun: night use only",
+    ],
+  );
+  add(
+    "line_smoothing",
+    k.lines >= 30 ? k.lines * 0.75 + Math.max(f.dryAir, f.cold) * 0.15 + f.uv * 0.1 : k.lines * 0.3,
+    [
+      k.lines >= 30 && `Your fine-lines score is ${skin.wrinkle}/100`,
+      Math.max(f.dryAir, f.cold) >= 40 && "Dry, cold air makes fine lines show",
+    ],
+  );
+
+  // Toner: a hydrating layer for dry air and flights, or a balancing one for oil and pores in the heat.
+  add(
+    "toner",
+    18 + Math.max(k.dryness * 0.3 + f.dryAir * 0.2 + (flying ? 10 : 0), Math.max(k.oil, k.pores, k.acne) * 0.3 + steamy * 0.15) + (st.redness ? 4 : 0),
+    [
+      (k.dryness >= 40 || f.dryAir >= 40) && "A hydrating toner adds a layer of water before serum",
+      flying && "Easy to refresh skin after the flight",
+      Math.max(k.oil, k.pores) >= 40 && steamy >= 40 && "A balancing toner helps with shine in the heat",
+    ],
+  );
 
   return needs.sort((a, b) => b.score - a.score);
 }

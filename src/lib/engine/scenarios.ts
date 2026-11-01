@@ -7,7 +7,18 @@ export const DEMO_SKIN: SkinProfile = {
   label: "Demo scan: dry, slightly sensitive skin",
   overall: 61,
   skinAge: 29,
-  scores: { moisture: 32, oiliness: 78, redness: 54, age_spot: 66, acne: 82, pore: 70, texture: 58, radiance: 49 },
+  scores: {
+    moisture: 32,
+    oiliness: 78,
+    redness: 54,
+    age_spot: 66,
+    acne: 64,
+    pore: 56,
+    texture: 58,
+    radiance: 49,
+    wrinkle: 66,
+  },
+  skinType: { whole: "Dry & Redness", tZone: "Normal", uZone: "Dry & Redness" },
 };
 
 /** Home climate used by demo scenarios when no live origin forecast is available. */

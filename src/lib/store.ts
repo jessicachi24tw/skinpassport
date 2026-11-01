@@ -2,7 +2,8 @@
 // It survives navigation and page refreshes (sessionStorage) without a server.
 
 import { useSyncExternalStore } from "react";
-import type { BudgetTier, Climate, NeedId, OwnedProduct, PlanResult, SkinProfile, TripInput } from "./types";
+import { CATALOG } from "./shop/catalog";
+import type { BudgetTier, Climate, NeedId, OwnedProduct, PlanResult, Product, SkinProfile, TripInput } from "./types";
 
 export type Step = "trip" | "scan" | "shelf" | "results";
 
@@ -20,6 +21,12 @@ export interface AppState {
   budget: BudgetTier;
   bag: string[]; // product ids the user chose to buy
   ownedNeeds: NeedId[]; // "I already have this" ticks
+  /** Last YouCam AI Skin Simulation result, keyed by photo + intensities. */
+  simulation: { key: string; image: string; before?: string; mock?: boolean } | null;
+  /** Products the user checked and added (not in our catalog). */
+  customProducts: Product[];
+  /** The saved passport this plan belongs to (My SkinPassports). */
+  currentPassportId: string | null;
 }
 
 export const INITIAL: AppState = {
@@ -36,6 +43,9 @@ export const INITIAL: AppState = {
   budget: "balanced",
   bag: [],
   ownedNeeds: [],
+  simulation: null,
+  customProducts: [],
+  currentPassportId: null,
 };
 
 const KEY = "skinpassport:v4";
@@ -60,11 +70,15 @@ export function setApp(patch: Partial<AppState> | ((s: AppState) => Partial<AppS
   try {
     window.sessionStorage.setItem(KEY, JSON.stringify(state));
   } catch {
-    // Storage full or unavailable: keep everything except the photo, state still lives in memory.
+    // Storage full or unavailable: drop the big images first, state still lives in memory.
     try {
-      window.sessionStorage.setItem(KEY, JSON.stringify({ ...state, photo: null }));
+      window.sessionStorage.setItem(KEY, JSON.stringify({ ...state, simulation: null }));
     } catch {
-      /* private mode */
+      try {
+        window.sessionStorage.setItem(KEY, JSON.stringify({ ...state, photo: null, simulation: null }));
+      } catch {
+        /* private mode */
+      }
     }
   }
   listeners.forEach((l) => l());
@@ -85,3 +99,7 @@ export const toggleBag = (id: string) => setApp((s) => ({ bag: s.bag.includes(id
 export const toggleOwnedNeed = (id: NeedId) =>
   setApp((s) => ({ ownedNeeds: s.ownedNeeds.includes(id) ? s.ownedNeeds.filter((x) => x !== id) : [...s.ownedNeeds, id] }));
 export const resetAll = () => setApp({ ...INITIAL });
+
+/** Catalog products plus the ones the user added from "Check a product". */
+export const allProducts = (s: Pick<AppState, "customProducts">) => [...CATALOG, ...(s.customProducts ?? [])];
+export const bagProducts = (s: Pick<AppState, "customProducts" | "bag">) => allProducts(s).filter((p) => s.bag.includes(p.id));

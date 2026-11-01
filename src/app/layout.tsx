@@ -1,4 +1,6 @@
 import type { Metadata, Viewport } from "next";
+import { Suspense } from "react";
+import AppNav from "@/components/AppNav";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -11,7 +13,12 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1, them
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className="h-full antialiased">
-      <body className="min-h-full">{children}</body>
+      <body className="min-h-full">
+        <div className="app-main">{children}</div>
+        <Suspense fallback={null}>
+          <AppNav />
+        </Suspense>
+      </body>
     </html>
   );
 }
