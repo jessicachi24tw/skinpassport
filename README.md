@@ -2,7 +2,7 @@
 
 **Your trip + your skin today = the right travel kit.**
 
-**🌐 Live demo:** [skinpassport.vercel.app](https://skinpassport.vercel.app) · **▶️ Demo video:** [Watch the demo]([https://youtu.be/IpKOlJqH73A])
+**🌐 Live demo:** [skinpassport.vercel.app](https://skinpassport.vercel.app) · **▶️ Demo video:** [Watch the demo](https://youtu.be/IpKOlJqH73A)
 
 SkinPassport plans your trip, scans your skin with the **YouCam AI Skin Analysis API** (9 travel-relevant scores + skin type), checks what's already on your shelf, and pulls the weather for your exact dates (temperature, humidity, UV index, air quality). It turns all of that into:
 
