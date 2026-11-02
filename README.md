@@ -1,4 +1,4 @@
-# SkinPassport: Geo-Adaptive Skincare Coach
+# SkinPassport
 
 **Your trip + your skin today = the right travel kit.**
 
@@ -6,14 +6,12 @@
 
 SkinPassport plans your trip, scans your skin with the **YouCam AI Skin Analysis API** (9 travel-relevant scores + skin type), checks what's already on your shelf, and pulls the weather for your exact dates (temperature, humidity, UV index, air quality). It turns all of that into:
 
-- an **InBody-style skin report**: each score in grey reference zones (Weak · Normal · Strong) plus a **trip risk** for your destination,
+- a **YouCam AI Skin Analysis** report: each score in grey reference zones (Weak · Normal · Strong) plus a **trip risk** for your destination,
 - **Today / Without protection** on your own face: coral marks where this trip puts your skin at risk, and an illustration of what could happen without protection (drier, redder, more visible pores),
 - a **Necessity Score (0–100)** with a Must-pack / Recommended / Nice-to-have tag for every product category,
-- product picks from a **L'Oréal Groupe-first catalog** in three budgets, each explained through its **verified ingredients** ("Your Moisture is Weak (32) → contains Ceramides, which rebuild the skin barrier"),
+- **product picks** in three budgets, each explained through its **verified ingredients** ("Your Moisture is Weak (32) → contains Ceramides, which rebuild the skin barrier"),
 - a **YouCam AI Skin Simulation** of your own face after the plan (before/after slider), improving only what your chosen products address,
 - an **action plan** with a 3D passport stamp (**Well protected** once every must-pack is covered), **Before the trip** steps that adapt to how many days are left, and a visual **During the trip** routine with product photos, **saved as an image** to your phone.
-
-> Demo highlight: the same dry-skin scan produces a completely different plan for **New York in winter** (ceramide cream, hydrating serum, lip repair, SPF 30) and **Miami in July** (SPF 50+ water-resistant sunscreen, after-sun gel, a light gel moisturizer instead of rich cream).
 
 ![Architecture](docs/architecture.png)
 
@@ -35,7 +33,7 @@ The trip flow is four pages: **Set your trip → Scan your skin → Add your she
    - **Predicted weather** when the whole trip is within 16 days (Open-Meteo / OpenWeather forecast),
    - **Typical for these dates** further out: last year's weather for the same dates from the Open-Meteo archive (UV is estimated from latitude and season if the archive has none, and labelled "est."),
    - plus the **current climate at home**, so the plan can react to the change ("25°C colder and 38 pts drier than Taipei").
-2. **Scan your skin**: a passport-style scanner with a **portrait 3:4 viewfinder** (full screen on phones, larger on desktop): MediaPipe Face Landmarker tracks 478 face points live in the browser and auto-captures when the face is steady; while YouCam analyzes, the photo becomes a rotating 3D mesh with a checklist tied to the real request status. We request the **9 SD concerns our products can address** (moisture, oil, redness, spots, acne, pores, texture, radiance, fine lines) plus **skin type** (whole face, T-zone and U-zone). Firmness, the eye area and eyelid shape are left out on purpose: the plan has no product for them. Skin type changes the plan in four ways: product texture (dry → rich creams, oily/combination → light gels), zone advice for combination skin (gel on the T-zone, cream on the cheeks), gentle care first for Redness types (soothing becomes a must-pack, fragrance-free ranks higher), and it appears in the summary, the product reasons and on the passport. The report overlays **YouCam's per-concern masks** on the photo, shows the 4 travel-sensitive scores first and the other 4 grouped, each InBody-style: grey zones **Weak <45 · Normal 45–69 · Strong ≥70** (SkinPassport reference ranges, not medical norms) and a **trip risk** (Low / Medium / High) that combines today's score with the destination.
+2. **Scan your skin**: a passport-style scanner with a **portrait 3:4 viewfinder** (full screen on phones, larger on desktop): MediaPipe Face Landmarker tracks 478 face points live in the browser and auto-captures when the face is steady; while YouCam analyzes, the photo becomes a rotating 3D mesh with a checklist tied to the real request status. We request the **9 SD concerns our products can address** (moisture, oil, redness, spots, acne, pores, texture, radiance, fine lines) plus **skin type** (whole face, T-zone and U-zone). Skin type changes the plan in four ways: product texture (dry → rich creams, oily/combination → light gels), zone advice for combination skin (gel on the T-zone, cream on the cheeks), gentle care first for Redness types (soothing becomes a must-pack, fragrance-free ranks higher), and it appears in the summary, the product reasons and on the passport. The report overlays **YouCam's per-concern masks** on the photo, shows the 4 travel-sensitive scores first: grey zones **Weak <45 · Normal 45–69 · Strong ≥70** (SkinPassport reference ranges, not medical norms) and a **trip risk** (Low / Medium / High) that combines today's score with the destination.
    YouCam flow: `POST /s2s/v2.0/file/skin-analysis` → upload to the presigned URL → `POST /s2s/v2.0/task/skin-analysis` → poll `GET /s2s/v2.0/task/skin-analysis/{id}`. If an account rejects `skin_type`, the app retries with the 9 scores.
 3. **Add your shelf (optional)**: two dropdowns, **Brand → Product** (like country → city), with 26 preset brands: our catalog plus well-known products people often own (`shop/shelfPresets.ts`). "Other…" in either dropdown lets you type any brand or product; the app then guesses the type and SPF from the name and flags retinoids/acids. Each item shows as a product card with its photo or an illustrated pack shot. Owned products:
    - cover a category ("Packed from home"), after a **spec check** (e.g. "Yours is SPF 30, this trip needs SPF 50+, water-resistant"),
@@ -80,7 +78,7 @@ The trip flow is four pages: **Set your trip → Scan your skin → Add your she
 
 ### Catalog (`src/lib/shop/catalog.ts`)
 
-36 products, 30 from **L'Oréal Groupe** brands (CeraVe, La Roche-Posay, Kiehl's, Vichy, SkinCeuticals, Lancôme, L'Oréal Paris, Garnier) and 6 others where L'Oréal had no fit or no stated percentage (The Ordinary, Paula's Choice, Neutrogena, Sun Bum). Every ingredient we mention was checked against the product's published INCI list (source link on each product page); brand claims such as "water-resistant 80 minutes" were checked on retailer pages. Descriptions are written in our own words. The `ShopProvider` interface lets you swap in a live store API, see [docs/shop-api-survey.md](docs/shop-api-survey.md).
+36 products. Every ingredient we mention was checked against the product's published INCI list (source link on each product page); brand claims such as "water-resistant 80 minutes" were checked on retailer pages. Descriptions are written in our own words. The `ShopProvider` interface lets you swap in a live store API, see [docs/shop-api-survey.md](docs/shop-api-survey.md).
 
 ## Tech stack
 
@@ -115,7 +113,6 @@ src/
     api/places               # country-filtered city autocomplete
     api/weather              # trip forecast, home climate, or demo scenario
     api/plan                 # engine + report + picks + summary
-    api/products/search      # catalog + Open Beauty Facts search (API; the shelf now uses dropdowns)
     api/products/lookup      # Check a product: catalog → Open Beauty Facts → Claude web search
     api/health               # which integrations are live
   components/                # CameraCapture, ScanResult, ShelfStep, Results, ActionPlanView, ProductView…

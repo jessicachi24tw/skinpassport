@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Don't let `next dev` write an AGENTS.md file into the repo.
+  agentRules: false,
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {
